@@ -97,6 +97,7 @@ jobs:
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
+          echo "test----1"
           docker buildx imagetools create \
             -t 192.168.10.103:3002/${{ needs.build.outputs.repo_path }}:${{ needs.build.outputs.tag || 'latest' }} \
             $(printf '192.168.10.103:3002/${{ needs.build.outputs.repo_path }}@sha256:%s ' *)
