@@ -1,27 +1,16 @@
 name: Build & Push Docker image
+
 on:
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Docker 标签'
-        required: false
-        default: 'latest'
-        type: string
   push:
-    branches: [ main, master ]
+    branches:
+      - main
+      - master
   pull_request:
-    branches: [ main, master ]
-
-# Giteaではconcurrencyがサポートされていない場合があるためコメントアウト
-# concurrency:
-#   group: ${{ github.workflow }}-${{ github.ref }}
-#   cancel-in-progress: true
-
-# Giteaでのpermissions設定（プラットフォームによって異なる場合があります）
-# permissions:
-#   contents: write
-#   packages: write
-#   actions: write
+    branches:
+      - main
+      - master
+  tags:
+    - "*"
 
 jobs:
   build:
@@ -31,39 +20,34 @@ jobs:
           - platform: linux/amd64
             os: ubuntu-latest
           - platform: linux/arm64
-            os: ubuntu-latest  # Giteaでarm64専用ランナーがない場合はubuntu-latestを使用
+            os: ubuntu-24.04-arm
     runs-on: ${{ matrix.os }}
+
     steps:
       - name: Prepare platform name
-        run: |
-          echo "PLATFORM_NAME=${{ matrix.platform }}" | sed 's|/|-|g' >> $GITHUB_ENV
-      
+        run: echo "PLATFORM_NAME=${{ matrix.platform }}" | sed 's|/|-|g' >> $GITHUB_ENV
+
       - name: Checkout source code
         uses: actions/checkout@v4
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      
-      # Giteaのコンテナレジストリにログイン
+
       - name: Login to Gitea Container Registry
         uses: docker/login-action@v3
         with:
           registry: 192.168.10.103:3002
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITEA_TOKEN }}  # GitHubトークンの代わりにGiteaトークンを使用
-      
-      - name: Set lowercase repository owner
-        id: lowercase
-        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
-      
+          username: ${{ gitea.actor }}
+          password: ${{ secrets.GITEA_TOKEN }}
+
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: 192.168.10.103:3002/yuan/lunatv
-          tags: |
-            type=raw,value=${{ github.event.inputs.tag || 'latest' }},enable={{is_default_branch}}
-      
+        run: |
+          REPO_PATH=$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')
+          TAG_NAME=${GITHUB_REF_NAME:-latest}
+          echo "repo_path=${REPO_PATH}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG_NAME}" >> $GITHUB_OUTPUT
+
       - name: Build and push by digest
         id: build
         uses: docker/build-push-action@v5
@@ -71,16 +55,15 @@ jobs:
           context: .
           file: ./Dockerfile
           platforms: ${{ matrix.platform }}
-          labels: ${{ steps.meta.outputs.labels }}
-          tags: 192.168.10.103:3002/yuan/lunatv:${{ github.event.inputs.tag || 'latest' }}
-          outputs: type=image,name=192.168.10.103:3002/yuan/lunatv,name-canonical=true,push=true
-      
+          tags: 192.168.10.103:3002/${{ steps.meta.outputs.repo_path }}:${{ steps.meta.outputs.tag }}
+          push: true
+
       - name: Export digest
         run: |
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
           touch "/tmp/digests/${digest#sha256:}"
-      
+
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
@@ -100,34 +83,29 @@ jobs:
           path: /tmp/digests
           pattern: digests-*
           merge-multiple: true
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      
+
       - name: Login to Gitea Container Registry
         uses: docker/login-action@v3
         with:
           registry: 192.168.10.103:3002
-          username: ${{ github.actor }}
+          username: ${{ gitea.actor }}
           password: ${{ secrets.GITEA_TOKEN }}
-      
-      - name: Set lowercase repository owner
-        id: lowercase
-        run: echo "owner=$(echo '${{ gitea.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITEA_OUTPUT"
-      
+
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
-          docker buildx imagetools create -t 192.168.10.103:3002/yuan/lunatv:${{ github.event.inputs.tag || 'latest' }} \
-            $(printf '192.168.10.103:3002/yuan/lunatv@sha256:%s ' *)
+          docker buildx imagetools create \
+            -t 192.168.10.103:3002/${{ needs.build.outputs.repo_path }}:${{ needs.build.outputs.tag || 'latest' }} \
+            $(printf '192.168.10.103:3002/${{ needs.build.outputs.repo_path }}@sha256:%s ' *)
 
-  # Giteaではワークフロー削除機能が制限されている場合があるため、このジョブは削除または調整が必要
-  # cleanup-refresh:
-  #   runs-on: ubuntu-latest
-  #   needs:
-  #     - merge
-  #   if: always()
-  #   steps:
-  #     - name: Delete workflow runs
-  #       # Gitea用のワークフロー削除アクションに置き換える必要があります
-  #       run: echo "Workflow cleanup not available in Gitea"
+  cleanup-refresh:
+    runs-on: ubuntu-latest
+    needs:
+      - merge
+    if: always()
+    steps:
+      - name: Skip cleanup (not supported in Gitea)
+        run: echo "Skipping workflow cleanup on Gitea"
