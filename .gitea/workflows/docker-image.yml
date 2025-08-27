@@ -100,12 +100,4 @@ jobs:
           docker buildx imagetools create \
             -t 192.168.10.103:3002/${{ needs.build.outputs.repo_path }}:${{ needs.build.outputs.tag || 'latest' }} \
             $(printf '192.168.10.103:3002/${{ needs.build.outputs.repo_path }}@sha256:%s ' *)
-
-  cleanup-refresh:
-    runs-on: ubuntu-latest
-    needs:
-      - merge
-    if: always()
-    steps:
-      - name: Skip cleanup (not supported in Gitea)
-        run: echo "Skipping workflow cleanup on Gitea"
+            
