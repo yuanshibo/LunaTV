@@ -34,8 +34,6 @@ jobs:
           tags: |
             ${{ steps.meta.outputs.repo_path }}:${{ steps.meta.outputs.version }}
             ${{ steps.meta.outputs.repo_path }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
       
       - name: Verify built images
         run: |
