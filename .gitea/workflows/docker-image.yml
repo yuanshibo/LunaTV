@@ -77,6 +77,7 @@ jobs:
       - name: Deploy with docker-compose
         run: |
           echo "Starting new container with updated image..."
+          cat docker-compose.yml
           docker-compose up -d
       
       - name: Verify deployment
