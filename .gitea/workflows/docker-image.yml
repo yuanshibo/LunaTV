@@ -41,3 +41,65 @@ jobs:
           docker images | grep "${{ steps.meta.outputs.repo_path }}"
           echo "Docker daemon info:"
           docker system info | grep "Docker Root Dir"
+          
+      - name: Create docker-compose.yml
+        run: |
+          cat > docker-compose.yml << 'EOF'
+          services:
+            lunatv:
+              image: ${{ steps.meta.outputs.repo_path }}:${{ steps.meta.outputs.version }}
+              container_name: lunatv
+              restart: on-failure
+              ports:
+                - '3000:3000'
+              environment:
+                - USERNAME=ysb
+                - PASSWORD=424008
+                - NEXT_PUBLIC_STORAGE_TYPE=redis
+                - REDIS_URL=redis://192.168.10.103:6379
+              networks:
+                - moontv-network
+          networks:
+            moontv-network:
+              driver: bridge
+          EOF
+      
+      - name: Stop existing container (if running)
+        run: |
+          if docker ps -q -f name=lunatv; then
+            echo "Stopping existing lunatv container..."
+            docker stop lunatv || true
+            docker rm lunatv || true
+          else
+            echo "No existing lunatv container found"
+          fi
+      
+      - name: Deploy with docker-compose
+        run: |
+          echo "Starting new container with updated image..."
+          docker-compose up -d
+      
+      - name: Verify deployment
+        run: |
+          echo "Container status:"
+          docker ps -f name=lunatv
+          echo ""
+          echo "Container logs (last 20 lines):"
+          docker logs lunatv --tail 20 || echo "Container not ready yet"
+          echo ""
+          echo "Waiting for container to be ready..."
+          sleep 10
+          docker logs lunatv --tail 10
+      
+      - name: Health check
+        run: |
+          echo "Testing container health..."
+          for i in {1..30}; do
+            if curl -f http://192.169.10.103:3000 > /dev/null 2>&1; then
+              echo "✅ Container is healthy and responding"
+              break
+            else
+              echo "⏳ Waiting for container to be ready... (attempt $i/30)"
+              sleep 10
+            fi
+          done
