@@ -19,7 +19,7 @@ jobs:
       - name: Login to Gitea Container Registry
         uses: docker/login-action@v3
         with:
-          registry: 192.168.10.103:3002
+          registry: 192.168.10.103:3005
           username: ${{ gitea.actor }}
           password: ${{ secrets.GITEA_TOKEN }}
 
@@ -39,5 +39,5 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            192.168.10.103:3002/${{ steps.meta.outputs.repo_path }}:${{ steps.meta.outputs.version }}
-            192.168.10.103:3002/${{ steps.meta.outputs.repo_path }}:latest
+            192.168.10.103:3005/${{ steps.meta.outputs.repo_path }}:${{ steps.meta.outputs.version }}
+            192.168.10.103:3005/${{ steps.meta.outputs.repo_path }}:latest
