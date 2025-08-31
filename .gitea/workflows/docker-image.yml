@@ -41,28 +41,6 @@ jobs:
           docker images | grep "${{ steps.meta.outputs.repo_path }}"
           echo "Docker daemon info:"
           docker system info | grep "Docker Root Dir"
-          
-      - name: Create docker-compose.yml
-        run: |
-          cat > docker-compose.yml << 'EOF'
-          services:
-            lunatv:
-              image: ${{ steps.meta.outputs.repo_path }}:${{ steps.meta.outputs.version }}
-              container_name: lunatv
-              restart: on-failure
-              ports:
-                - '3000:3000'
-              environment:
-                - USERNAME=ysb
-                - PASSWORD=424008
-                - NEXT_PUBLIC_STORAGE_TYPE=redis
-                - REDIS_URL=redis://192.168.10.103:6379
-              networks:
-                - moontv-network
-          networks:
-            moontv-network:
-              driver: bridge
-          EOF
       
       - name: Stop existing container (if running)
         run: |
@@ -103,7 +81,7 @@ jobs:
         run: |
           echo "Testing container health..."
           for i in {1..30}; do
-            if curl -f http://192.169.10.103:3000 > /dev/null 2>&1; then
+            if curl -f http://192.168.10.103:3000 > /dev/null 2>&1; then
               echo "✅ Container is healthy and responding"
               break
             else
