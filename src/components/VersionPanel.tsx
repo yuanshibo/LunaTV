@@ -81,7 +81,7 @@ export const VersionPanel: React.FC<VersionPanelProps> = ({
   const fetchRemoteChangelog = async () => {
     try {
       const response = await fetch(
-        'http://192.168.10.103:3002/yuan/LunaTV/src/branch/main/CHANGELOG'
+        'http://192.168.10.103:3002/yuan/LunaTV/raw/branch/main/CHANGELOG'
       );
       if (response.ok) {
         const content = await response.text();
