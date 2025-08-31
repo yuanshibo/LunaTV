@@ -74,11 +74,18 @@ jobs:
             echo "No existing lunatv container found"
           fi
       
-      - name: Deploy with docker-compose
+      - name: Create and start new container
         run: |
           echo "Starting new container with updated image..."
-          cat docker-compose.yml
-          docker-compose up -d
+          docker run -d \
+            --name lunatv \
+            --restart on-failure \
+            -p 3000:3000 \
+            -e USERNAME=ysb \
+            -e PASSWORD=424008 \
+            -e NEXT_PUBLIC_STORAGE_TYPE=redis \
+            -e REDIS_URL=redis://192.168.10.103:6379 \
+            ${{ steps.meta.outputs.repo_path }}:${{ steps.meta.outputs.version }}
       
       - name: Verify deployment
         run: |
