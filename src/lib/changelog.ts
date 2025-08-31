@@ -11,7 +11,20 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
-    version: "100.0.0",
+    version: "5.1.0",
+    date: "2025-08-31",
+    added: [
+      "新增本地自动部署"
+    ],
+    changed: [
+      "无修复内容"
+    ],
+    fixed: [
+      // 无修复内容
+    ]
+  },
+  {
+    version: "5.0.0",
     date: "2025-08-26",
     added: [
       "新增对 SITE_BASE 环境变量的支持，解决 m3u8 重写时 base url 错误的问题"
