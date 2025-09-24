@@ -54,6 +54,19 @@ interface DoubanRecommendApiResponse {
   }>;
 }
 
+interface DoubanSuggestItem {
+  id: string;
+  title: string;
+  original_title?: string;
+  sub_title?: string;
+  year?: string;
+  type?: string;
+  subtype?: string;
+  cover?: string;
+  poster?: string;
+  img?: string;
+}
+
 /**
  * 带超时的 fetch 请求
  */
@@ -318,6 +331,94 @@ export async function fetchDoubanList(
       );
     }
     throw new Error(`获取豆瓣分类数据失败: ${(error as Error).message}`);
+  }
+}
+
+export async function getDoubanSearchResults(
+  query: string
+): Promise<DoubanResult> {
+  const trimmed = query.trim();
+  if (!trimmed) {
+    return { code: 200, message: '获取成功', list: [] };
+  }
+
+  const { proxyType, proxyUrl } = getDoubanProxyConfig();
+  switch (proxyType) {
+    case 'cors-proxy-zwei':
+      return fetchDoubanSearchResults(trimmed, 'https://ciao-cors.is-an.org/');
+    case 'cmliussss-cdn-tencent':
+      return fetchDoubanSearchResults(trimmed, '', true, false);
+    case 'cmliussss-cdn-ali':
+      return fetchDoubanSearchResults(trimmed, '', false, true);
+    case 'cors-anywhere':
+      return fetchDoubanSearchResults(trimmed, 'https://cors-anywhere.com/');
+    case 'custom':
+      return fetchDoubanSearchResults(trimmed, proxyUrl);
+    case 'direct':
+    default:
+      const response = await fetch(
+        `/api/douban/search?q=${encodeURIComponent(trimmed)}`
+      );
+
+      return response.json();
+  }
+}
+
+async function fetchDoubanSearchResults(
+  query: string,
+  proxyUrl: string,
+  useTencentCDN = false,
+  useAliCDN = false
+): Promise<DoubanResult> {
+  const allowedTypes = new Set(['movie', 'tv', 'show']);
+  const baseUrl = useTencentCDN
+    ? 'https://movie.douban.cmliussss.net/j/subject_suggest'
+    : useAliCDN
+      ? 'https://movie.douban.cmliussss.com/j/subject_suggest'
+      : 'https://movie.douban.com/j/subject_suggest';
+  const target = `${baseUrl}?q=${encodeURIComponent(query)}`;
+
+  try {
+    const response = await fetchWithTimeout(
+      target,
+      useTencentCDN || useAliCDN ? '' : proxyUrl
+    );
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+
+    const doubanData: DoubanSuggestItem[] = await response.json();
+    const list: DoubanItem[] = Array.isArray(doubanData)
+      ? doubanData
+        .filter((item) => {
+          const type = (item.type || item.subtype || '').toLowerCase();
+          return allowedTypes.has(type);
+        })
+        .map((item) => {
+          const rawType = (item.type || item.subtype || '').toLowerCase();
+          const normalizedType =
+            rawType === 'tv' || rawType === 'show' ? 'tv' : 'movie';
+          return {
+            id: item.id?.toString() || '',
+            title: item.title || item.original_title || '',
+            poster: item.img || item.cover || item.poster || '',
+            rate: '',
+            year:
+              item.year || item.sub_title?.match(/(\d{4})/)?.[1] || '',
+            type: normalizedType,
+          } as DoubanItem;
+        })
+        .filter((item) => item.id && item.title)
+      : [];
+
+    return {
+      code: 200,
+      message: '获取成功',
+      list,
+    };
+  } catch (error) {
+    throw new Error(`获取豆瓣搜索结果失败: ${(error as Error).message}`);
   }
 }
 
