@@ -4,7 +4,9 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getAuthInfoFromCookie } from '@/lib/auth';
 import { getAvailableApiSites, getCacheTime, getConfig } from '@/lib/config';
+import { fetchDoubanData } from '@/lib/douban';
 import { searchFromApi } from '@/lib/downstream';
+import { DoubanItem } from '@/lib/types';
 import { yellowWords } from '@/lib/yellow';
 
 export const runtime = 'nodejs';
@@ -21,7 +23,27 @@ export async function GET(request: NextRequest) {
   if (!query) {
     const cacheTime = await getCacheTime();
     return NextResponse.json(
-      { results: [] },
+      { douban: [], results: [] },
+      {
+        headers: {
+          'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
+          'CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
+          'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
+          'Netlify-Vary': 'query',
+        },
+      }
+    );
+  }
+
+  const doubanResults = await searchDoubanSuggestions(query).catch((error) => {
+    console.warn('豆瓣搜索失败:', (error as Error).message);
+    return [] as DoubanItem[];
+  });
+
+  if (doubanResults.length > 0) {
+    const cacheTime = await getCacheTime();
+    return NextResponse.json(
+      { douban: doubanResults, results: [] },
       {
         headers: {
           'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
@@ -65,11 +87,11 @@ export async function GET(request: NextRequest) {
 
     if (flattenedResults.length === 0) {
       // no cache if empty
-      return NextResponse.json({ results: [] }, { status: 200 });
+      return NextResponse.json({ douban: [], results: [] }, { status: 200 });
     }
 
     return NextResponse.json(
-      { results: flattenedResults },
+      { douban: [], results: flattenedResults },
       {
         headers: {
           'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
@@ -82,4 +104,48 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return NextResponse.json({ error: '搜索失败' }, { status: 500 });
   }
+}
+
+const DOUBAN_ALLOWED_TYPES = new Set(['movie', 'tv', 'show']);
+
+interface DoubanSuggestItem {
+  id: string;
+  title: string;
+  original_title?: string;
+  sub_title?: string;
+  year?: string;
+  type?: string;
+  subtype?: string;
+  cover?: string;
+  poster?: string;
+  img?: string;
+}
+
+async function searchDoubanSuggestions(query: string): Promise<DoubanItem[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  const target = `https://movie.douban.com/j/subject_suggest?q=${encodeURIComponent(trimmed)}`;
+  const doubanData = await fetchDoubanData<DoubanSuggestItem[]>(target);
+
+  if (!Array.isArray(doubanData)) return [];
+
+  return doubanData
+    .filter((item) => {
+      const type = (item.type || item.subtype || '').toLowerCase();
+      return DOUBAN_ALLOWED_TYPES.has(type);
+    })
+    .map((item) => {
+      const rawType = (item.type || item.subtype || '').toLowerCase();
+      const normalizedType = rawType === 'tv' || rawType === 'show' ? 'tv' : 'movie';
+      return {
+        id: item.id?.toString() || '',
+        title: item.title || item.original_title || '',
+        poster: item.img || item.cover || item.poster || '',
+        rate: '',
+        year: item.year || item.sub_title?.match(/(\d{4})/)?.[1] || '',
+        type: normalizedType,
+      } as DoubanItem;
+    })
+    .filter((item) => item.id && item.title);
 }
