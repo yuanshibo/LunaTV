@@ -1,8 +1,11 @@
 name: Build & Push Docker image
+
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -17,7 +20,7 @@ jobs:
         id: meta
         run: |
           REPO_PATH=$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')
-          VERSION=${GITHUB_REF_NAME#v}   # "v" を削除
+          VERSION=$(cat VERSION.txt)   # "v" を削除
           echo "repo_path=${REPO_PATH}" >> $GITHUB_OUTPUT
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "Repository: ${REPO_PATH}"
