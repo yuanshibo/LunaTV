@@ -11,7 +11,7 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
-    version: "5.1.0",
+    version: "5.1.4",
     date: "2025-08-31",
     added: [
       "新增本地自动部署"
@@ -21,6 +21,20 @@ export const changelog: ChangelogEntry[] = [
     ],
     fixed: [
       // 无修复内容
+    ]
+  },
+  {
+    version: "5.0.1",
+    date: "2025-09-25",
+    added: [
+      // 无新增内容
+    ],
+    changed: [
+      // 无变更内容
+    ],
+      fixed: [
+      "修复错误的环境变量 ADMIN_USERNAME",
+      "修复 bangumi 数据中没有图片导致首页崩溃问题"
     ]
   },
   {
