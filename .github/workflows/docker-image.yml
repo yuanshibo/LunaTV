@@ -65,7 +65,7 @@ jobs:
             -e USERNAME=ysb \
             -e PASSWORD=424008 \
             -e NEXT_PUBLIC_STORAGE_TYPE=redis \
-            -e REDIS_URL=redis://192.168.10.103:6379 \
+            -e REDIS_URL=redis://192.168.86.51:6379 \
             ${{ steps.meta.outputs.repo_path }}:${{ steps.meta.outputs.version }}
       
       - name: Verify deployment
