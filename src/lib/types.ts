@@ -81,6 +81,10 @@ export interface IStorage {
   deleteSkipConfig(userName: string, source: string, id: string): Promise<void>;
   getAllSkipConfigs(userName: string): Promise<{ [key: string]: SkipConfig }>;
 
+  // 全局缓存
+  getGlobalCache<T>(key: string): Promise<T | null>;
+  setGlobalCache<T>(key: string, data: T, ttl?: number): Promise<void>;
+
   // 数据清理相关
   clearAllData(): Promise<void>;
 }

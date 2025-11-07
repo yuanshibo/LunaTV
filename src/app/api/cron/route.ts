@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getConfig, refineConfig } from '@/lib/config';
 import { db } from '@/lib/db';
+import { discoverSort } from '@/lib/discover_sort';
 import { fetchVideoDetail } from '@/lib/fetchVideoDetail';
 import { refreshLiveChannels } from '@/lib/live';
 import { SearchResult } from '@/lib/types';
@@ -42,6 +43,7 @@ async function cronJob() {
   await refreshConfig();
   await refreshAllLiveChannels();
   await refreshRecordAndFavorites();
+  await refreshDiscoverContent();
 }
 
 async function refreshAllLiveChannels() {
@@ -253,5 +255,28 @@ async function refreshRecordAndFavorites() {
     console.log('刷新播放记录/收藏任务完成');
   } catch (err) {
     console.error('刷新播放记录/收藏任务启动失败', err);
+  }
+}
+
+async function refreshDiscoverContent() {
+  try {
+    const users = await db.getAllUsers();
+    if (process.env.USERNAME && !users.includes(process.env.USERNAME)) {
+      users.push(process.env.USERNAME);
+    }
+
+    for (const user of users) {
+      console.log(`Refreshing discover content for user: ${user}...`);
+      const sortedList = await discoverSort.sort(user);
+      // Cache for one day
+      await db.setGlobalCache(
+        `discover:${user}`,
+        sortedList,
+        60 * 60 * 24
+      );
+      console.log(`Discover content for user ${user} refreshed and cached.`);
+    }
+  } catch (err) {
+    console.error('Failed to refresh discover content:', err);
   }
 }

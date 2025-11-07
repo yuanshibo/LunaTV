@@ -373,6 +373,33 @@ export abstract class BaseRedisStorage implements IStorage {
     );
   }
 
+  // ---------- 全局缓存 ----------
+  private globalCacheKey(key: string) {
+    return `global:cache:${key}`;
+  }
+
+  async getGlobalCache<T>(key: string): Promise<T | null> {
+    const val = await this.withRetry(() =>
+      this.client.get(this.globalCacheKey(key))
+    );
+    return val ? (JSON.parse(val) as T) : null;
+  }
+
+  async setGlobalCache<T>(
+    key: string,
+    data: T,
+    ttl?: number
+  ): Promise<void> {
+    const s = JSON.stringify(data);
+    if (ttl) {
+      await this.withRetry(() =>
+        this.client.set(this.globalCacheKey(key), s, { EX: ttl })
+      );
+    } else {
+      await this.withRetry(() => this.client.set(this.globalCacheKey(key), s));
+    }
+  }
+
   // ---------- 跳过片头片尾配置 ----------
   private skipConfigKey(user: string, source: string, id: string) {
     return `u:${user}:skip:${source}+${id}`;

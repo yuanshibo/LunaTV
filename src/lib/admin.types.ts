@@ -55,6 +55,10 @@ export interface AdminConfig {
     channelNumber?: number;
     disabled?: boolean;
   }[];
+  AiConfig?: {
+    host: string;
+    model: string;
+  };
 }
 
 export interface AdminConfigResult {
