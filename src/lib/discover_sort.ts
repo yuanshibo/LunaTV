@@ -169,7 +169,12 @@ export class DiscoverSort {
     }
   }
 
-  private async callOllama(aiConfig: { host: string; model?: string }, prompt: string): Promise<string> {
+  private async callOllama(
+    aiConfig: { host: string; model?: string },
+    prompt: string
+  ): Promise<string> {
+    console.log('[AI Call] Sending prompt to Ollama:', prompt);
+
     const response = await fetch(`${aiConfig.host}/api/generate`, {
       method: 'POST',
       headers: {
@@ -183,11 +188,16 @@ export class DiscoverSort {
     });
 
     if (!response.ok) {
-      throw new Error(`Ollama API request failed: ${response.status} ${response.statusText}`);
+      throw new Error(
+        `Ollama API request failed: ${response.status} ${response.statusText}`
+      );
     }
 
     const result = await response.json();
-    return result.response;
+    const aiResponse = result.response;
+    console.log('[AI Call] Received raw response from Ollama:', aiResponse);
+
+    return aiResponse;
   }
 
   private buildExplorationPrompt(watchedTitles: string[]): string {

@@ -245,6 +245,14 @@ export class DbManager {
     }
   }
 
+  async deleteGlobalCacheByPattern(pattern: string): Promise<void> {
+    if (
+      typeof (this.storage as any).deleteGlobalCacheByPattern === 'function'
+    ) {
+      await (this.storage as any).deleteGlobalCacheByPattern(pattern);
+    }
+  }
+
   // ---------- 数据清理 ----------
   async clearAllData(): Promise<void> {
     if (typeof (this.storage as any).clearAllData === 'function') {

@@ -84,6 +84,7 @@ export interface IStorage {
   // 全局缓存
   getGlobalCache<T>(key: string): Promise<T | null>;
   setGlobalCache<T>(key: string, data: T, ttl?: number): Promise<void>;
+  deleteGlobalCacheByPattern(pattern: string): Promise<void>;
 
   // 数据清理相关
   clearAllData(): Promise<void>;

@@ -423,6 +423,15 @@ export abstract class BaseRedisStorage implements IStorage {
     }
   }
 
+  async deleteGlobalCacheByPattern(pattern: string): Promise<void> {
+    const keys = await this.withRetry(() =>
+      this.client.keys(this.globalCacheKey(pattern))
+    );
+    if (keys.length > 0) {
+      await this.withRetry(() => this.client.del(keys));
+    }
+  }
+
   // ---------- 跳过片头片尾配置 ----------
   private skipConfigKey(user: string, source: string, id: string) {
     return `u:${user}:skip:${source}+${id}`;

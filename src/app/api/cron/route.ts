@@ -273,11 +273,16 @@ async function refreshDiscoverContent() {
     }
 
     for (const user of users) {
-      console.log(`Refreshing discover content for user: ${user}...`);
+      console.log(
+        `[Cron] Refreshing discover content for user: ${user}...`
+      );
       const sortedList = await discoverSort.sort(user);
+      const cacheKey = `discover_sort_user_${user}`;
       // Cache for one day
-      await db.setGlobalCache(`discover:${user}`, sortedList, 60 * 60 * 24);
-      console.log(`Discover content for user ${user} refreshed and cached.`);
+      await db.setGlobalCache(cacheKey, sortedList, 60 * 60 * 24);
+      console.log(
+        `[Cron] Discover content for user ${user} refreshed and cached.`
+      );
     }
   } catch (err) {
     console.error('Failed to refresh discover content:', err);

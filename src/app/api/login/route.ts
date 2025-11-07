@@ -7,6 +7,29 @@ import { discoverSort } from '@/lib/discover_sort';
 
 export const runtime = 'nodejs';
 
+// 异步检查并触发AI推荐缓存（这是一个耗时操作，不需要等待它完成）
+function triggerDiscoverSort(username: string) {
+  (async () => {
+    try {
+      const cacheKey = `discover_sort_user_${username}`;
+      const cachedData = await db.getGlobalCache(cacheKey);
+      if (!cachedData) {
+        console.log(
+          `[Login] No discover cache found for user ${username}, triggering sort...`
+        );
+        const sortedList = await discoverSort.sort(username);
+        // Cache for one day
+        await db.setGlobalCache(cacheKey, sortedList, 60 * 60 * 24);
+        console.log(
+          `[Login] Discover content for user ${username} refreshed and cached.`
+        );
+      }
+    } catch (e) {
+      console.error('Failed to trigger discover sort on login:', e);
+    }
+  })();
+}
+
 // 读取存储类型环境变量，默认 localstorage
 const STORAGE_TYPE =
   (process.env.NEXT_PUBLIC_STORAGE_TYPE as
@@ -122,21 +145,7 @@ export async function POST(req: NextRequest) {
       });
 
       // 异步检查并触发AI推荐缓存
-      (async () => {
-        try {
-          const username = process.env.USERNAME || 'test';
-          const cacheKey = `discover:${username}`;
-          const cachedData = await db.getGlobalCache(cacheKey);
-          if (!cachedData) {
-            console.log(
-              `No discover cache found for user ${username}, triggering sort...`
-            );
-            await discoverSort.sort(username);
-          }
-        } catch (e) {
-          console.error('Failed to trigger discover sort on login:', e);
-        }
-      })();
+      triggerDiscoverSort(process.env.USERNAME || 'test');
 
       return response;
     }
@@ -176,20 +185,7 @@ export async function POST(req: NextRequest) {
       });
 
       // 异步检查并触发AI推荐缓存
-      (async () => {
-        try {
-          const cacheKey = `discover:${username}`;
-          const cachedData = await db.getGlobalCache(cacheKey);
-          if (!cachedData) {
-            console.log(
-              `No discover cache found for user ${username}, triggering sort...`
-            );
-            await discoverSort.sort(username);
-          }
-        } catch (e) {
-          console.error('Failed to trigger discover sort on login:', e);
-        }
-      })();
+      triggerDiscoverSort(username);
 
       return response;
     } else if (username === process.env.USERNAME) {
@@ -232,20 +228,7 @@ export async function POST(req: NextRequest) {
       });
 
       // 异步检查并触发AI推荐缓存
-      (async () => {
-        try {
-          const cacheKey = `discover:${username}`;
-          const cachedData = await db.getGlobalCache(cacheKey);
-          if (!cachedData) {
-            console.log(
-              `No discover cache found for user ${username}, triggering sort...`
-            );
-            await discoverSort.sort(username);
-          }
-        } catch (e) {
-          console.error('Failed to trigger discover sort on login:', e);
-        }
-      })();
+      triggerDiscoverSort(username);
 
       return response;
     } catch (err) {
