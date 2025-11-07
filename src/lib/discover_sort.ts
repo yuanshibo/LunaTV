@@ -8,15 +8,26 @@ import { DoubanItem } from './types';
 export class DiscoverSort {
   // 获取豆瓣 Top 500 数据
   private async getDoubanTop500(): Promise<DoubanItem[]> {
+    const cacheKey = 'douban-top-500';
+    const cachedData = await db.getGlobalCache<DoubanItem[]>(cacheKey);
+    if (cachedData) {
+      console.log('Using cached Douban Top 500...');
+      return cachedData;
+    }
+
     console.log('Fetching Douban Top 500...');
-    // '热门' tag includes top items.
-    // Fetching 500 items by setting pageLimit to 500.
     const doubanResult = await getDoubanList({
       tag: '热门',
       type: 'tv',
       pageLimit: 500,
       pageStart: 0,
     });
+
+    if (doubanResult.list && doubanResult.list.length > 0) {
+      // 缓存24小时
+      await db.setGlobalCache(cacheKey, doubanResult.list, 60 * 60 * 24);
+    }
+
     return doubanResult.list;
   }
 

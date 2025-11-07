@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any,no-console,no-case-declarations */
 
+import { db } from './db';
 import { DoubanItem, DoubanResult } from './types';
 
 interface DoubanCategoriesParams {
@@ -92,7 +93,7 @@ async function fetchWithTimeout(
   }
 }
 
-function getDoubanProxyConfig(): {
+async function getDoubanProxyConfig(): Promise<{
   proxyType:
     | 'direct'
     | 'cors-proxy-zwei'
@@ -101,19 +102,32 @@ function getDoubanProxyConfig(): {
     | 'cors-anywhere'
     | 'custom';
   proxyUrl: string;
-} {
-  const doubanProxyType =
-    localStorage.getItem('doubanDataSource') ||
-    (window as any).RUNTIME_CONFIG?.DOUBAN_PROXY_TYPE ||
-    'cmliussss-cdn-tencent';
-  const doubanProxy =
-    localStorage.getItem('doubanProxyUrl') ||
-    (window as any).RUNTIME_CONFIG?.DOUBAN_PROXY ||
-    '';
-  return {
-    proxyType: doubanProxyType,
-    proxyUrl: doubanProxy,
-  };
+}> {
+  if (typeof window !== 'undefined') {
+    // 客户端逻辑保持不变
+    const doubanProxyType =
+      localStorage.getItem('doubanDataSource') ||
+      (window as any).RUNTIME_CONFIG?.DOUBAN_PROXY_TYPE ||
+      'cmliussss-cdn-tencent';
+    const doubanProxy =
+      localStorage.getItem('doubanProxyUrl') ||
+      (window as any).RUNTIME_CONFIG?.DOUBAN_PROXY ||
+      '';
+    return {
+      proxyType: doubanProxyType,
+      proxyUrl: doubanProxy,
+    };
+  } else {
+    // 服务端逻辑
+    const adminConfig = await db.getAdminConfig();
+    const doubanProxyType =
+      adminConfig?.doubanProxyType || 'cmliussss-cdn-tencent';
+    const doubanProxy = adminConfig?.doubanProxyUrl || '';
+    return {
+      proxyType: doubanProxyType as any,
+      proxyUrl: doubanProxy,
+    };
+  }
 }
 
 /**
@@ -196,7 +210,7 @@ export async function getDoubanCategories(
   params: DoubanCategoriesParams
 ): Promise<DoubanResult> {
   const { kind, category, type, pageLimit = 20, pageStart = 0 } = params;
-  const { proxyType, proxyUrl } = getDoubanProxyConfig();
+  const { proxyType, proxyUrl } = await getDoubanProxyConfig();
   switch (proxyType) {
     case 'cors-proxy-zwei':
       return fetchDoubanCategories(params, 'https://ciao-cors.is-an.org/');
@@ -229,7 +243,7 @@ export async function getDoubanList(
   params: DoubanListParams
 ): Promise<DoubanResult> {
   const { tag, type, pageLimit = 20, pageStart = 0 } = params;
-  const { proxyType, proxyUrl } = getDoubanProxyConfig();
+  const { proxyType, proxyUrl } = await getDoubanProxyConfig();
   switch (proxyType) {
     case 'cors-proxy-zwei':
       return fetchDoubanList(params, 'https://ciao-cors.is-an.org/');
@@ -349,7 +363,7 @@ export async function getDoubanRecommends(
     platform,
     sort,
   } = params;
-  const { proxyType, proxyUrl } = getDoubanProxyConfig();
+  const { proxyType, proxyUrl } = await getDoubanProxyConfig();
   switch (proxyType) {
     case 'cors-proxy-zwei':
       return fetchDoubanRecommends(params, 'https://ciao-cors.is-an.org/');

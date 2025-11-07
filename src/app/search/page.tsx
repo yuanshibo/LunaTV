@@ -19,7 +19,7 @@ import {
   getSearchHistory,
   subscribeToDataUpdates,
 } from '@/lib/db.client';
-import { SearchResult } from '@/lib/types';
+import { DoubanItem, SearchResult } from '@/lib/types';
 
 import PageLayout from '@/components/PageLayout';
 import SearchResultFilter, {
@@ -33,6 +33,8 @@ function SearchPageClient() {
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   // 返回顶部按钮显示状态
   const [showBackToTop, setShowBackToTop] = useState(false);
+  const [discoverItems, setDiscoverItems] = useState<DoubanItem[]>([]);
+  const [isLoadingDiscover, setIsLoadingDiscover] = useState(true);
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -378,6 +380,24 @@ function SearchPageClient() {
         : bTitle.localeCompare(aTitle);
     });
   }, [aggregatedResults, filterAgg, searchQuery]);
+
+  useEffect(() => {
+    const fetchDiscoverItems = async () => {
+      setIsLoadingDiscover(true);
+      try {
+        const response = await fetch('/api/discover?start=0&limit=50');
+        const data = await response.json();
+        if (data.list) {
+          setDiscoverItems(data.list);
+        }
+      } catch (error) {
+        // handle error silently
+      } finally {
+        setIsLoadingDiscover(false);
+      }
+    };
+    fetchDiscoverItems();
+  }, []);
 
   useEffect(() => {
     // 无搜索参数时聚焦搜索框
@@ -758,9 +778,10 @@ function SearchPageClient() {
           </form>
         </div>
 
-        {/* 搜索结果或搜索历史 */}
+        {/* AI推荐、搜索结果或搜索历史 */}
         <div className='max-w-[95%] mx-auto mt-12 overflow-visible'>
           {showResults ? (
+            // 已开始搜索
             <section className='mb-12'>
               {/* 标题 */}
               <div className='mb-4'>
@@ -814,16 +835,26 @@ function SearchPageClient() {
                   </div>
                 </label>
               </div>
-              {searchResults.length === 0 ? (
-                isLoading ? (
-                  <div className='flex justify-center items-center h-40'>
-                    <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-green-500'></div>
-                  </div>
-                ) : (
+              {searchResults.length === 0 && !isLoading ? (
+                <>
                   <div className='text-center text-gray-500 py-8 dark:text-gray-400'>
-                    未找到相关结果
+                    未找到相关结果，为你推荐
                   </div>
-                )
+                  <div className='justify-start grid grid-cols-3 gap-x-2 gap-y-14 sm:gap-y-20 px-0 sm:px-2 sm:grid-cols-[repeat(auto-fill,_minmax(11rem,_1fr))] sm:gap-x-8'>
+                    {discoverItems.map((item) => (
+                      <div key={item.id} className='w-full'>
+                        <VideoCard
+                          id={item.id}
+                          title={item.title}
+                          poster={item.poster}
+                          rate={item.rate}
+                          year={item.year}
+                          from='douban'
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </>
               ) : (
                 <div
                   key={`search-results-${viewMode}`}
@@ -896,53 +927,83 @@ function SearchPageClient() {
                 </div>
               )}
             </section>
-          ) : searchHistory.length > 0 ? (
-            // 搜索历史
-            <section className='mb-12'>
-              <h2 className='mb-4 text-xl font-bold text-gray-800 text-left dark:text-gray-200'>
-                搜索历史
-                {searchHistory.length > 0 && (
-                  <button
-                    onClick={() => {
-                      clearSearchHistory(); // 事件监听会自动更新界面
-                    }}
-                    className='ml-3 text-sm text-gray-500 hover:text-red-500 transition-colors dark:text-gray-400 dark:hover:text-red-500'
-                  >
-                    清空
-                  </button>
-                )}
-              </h2>
-              <div className='flex flex-wrap gap-2'>
-                {searchHistory.map((item) => (
-                  <div key={item} className='relative group'>
-                    <button
-                      onClick={() => {
-                        setSearchQuery(item);
-                        router.push(
-                          `/search?q=${encodeURIComponent(item.trim())}`
-                        );
-                      }}
-                      className='px-4 py-2 bg-gray-500/10 hover:bg-gray-300 rounded-full text-sm text-gray-700 transition-colors duration-200 dark:bg-gray-700/50 dark:hover:bg-gray-600 dark:text-gray-300'
-                    >
-                      {item}
-                    </button>
-                    {/* 删除按钮 */}
-                    <button
-                      aria-label='删除搜索历史'
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        deleteSearchHistory(item); // 事件监听会自动更新界面
-                      }}
-                      className='absolute -top-1 -right-1 w-4 h-4 opacity-0 group-hover:opacity-100 bg-gray-400 hover:bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] transition-colors'
-                    >
-                      <X className='w-3 h-3' />
-                    </button>
+          ) : (
+            <>
+              {isLoadingDiscover ? (
+                <div className='flex justify-center items-center h-40'>
+                  <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-green-500'></div>
+                </div>
+              ) : (
+                <section className='mb-12'>
+                  <h2 className='mb-4 text-xl font-bold text-gray-800 text-left dark:text-gray-200'>
+                    AI 推荐
+                  </h2>
+                  <div className='justify-start grid grid-cols-3 gap-x-2 gap-y-14 sm:gap-y-20 px-0 sm:px-2 sm:grid-cols-[repeat(auto-fill,_minmax(11rem,_1fr))] sm:gap-x-8'>
+                    {discoverItems.map((item) => (
+                      <div key={item.id} className='w-full'>
+                        <VideoCard
+                          id={item.id}
+                          title={item.title}
+                          poster={item.poster}
+                          rate={item.rate}
+                          year={item.year}
+                          from='douban'
+                        />
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </section>
-          ) : null}
+                </section>
+              )}
+
+              {searchHistory.length > 0 && (
+                // 搜索历史
+                <section className='mb-12'>
+                  <h2 className='mb-4 text-xl font-bold text-gray-800 text-left dark:text-gray-200'>
+                    搜索历史
+                    {searchHistory.length > 0 && (
+                      <button
+                        onClick={() => {
+                          clearSearchHistory(); // 事件监听会自动更新界面
+                        }}
+                        className='ml-3 text-sm text-gray-500 hover:text-red-500 transition-colors dark:text-gray-400 dark:hover:text-red-500'
+                      >
+                        清空
+                      </button>
+                    )}
+                  </h2>
+                  <div className='flex flex-wrap gap-2'>
+                    {searchHistory.map((item) => (
+                      <div key={item} className='relative group'>
+                        <button
+                          onClick={() => {
+                            setSearchQuery(item);
+                            router.push(
+                              `/search?q=${encodeURIComponent(item.trim())}`
+                            );
+                          }}
+                          className='px-4 py-2 bg-gray-500/10 hover:bg-gray-300 rounded-full text-sm text-gray-700 transition-colors duration-200 dark:bg-gray-700/50 dark:hover:bg-gray-600 dark:text-gray-300'
+                        >
+                          {item}
+                        </button>
+                        {/* 删除按钮 */}
+                        <button
+                          aria-label='删除搜索历史'
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            deleteSearchHistory(item); // 事件监听会自动更新界面
+                          }}
+                          className='absolute -top-1 -right-1 w-4 h-4 opacity-0 group-hover:opacity-100 bg-gray-400 hover:bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] transition-colors'
+                        >
+                          <X className='w-3 h-3' />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </>
+          )}
         </div>
       </div>
 
