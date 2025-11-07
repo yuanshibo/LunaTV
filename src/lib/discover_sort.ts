@@ -15,20 +15,31 @@ export class DiscoverSort {
       return cachedData;
     }
 
-    console.log('Fetching Douban Top 500...');
-    const doubanResult = await getDoubanList({
-      tag: '热门',
-      type: 'tv',
-      pageLimit: 500,
-      pageStart: 0,
-    });
+    console.log('Fetching Douban Top 500 in parallel...');
+    const pageLimit = 100;
+    const pageCount = 5;
+    const promises: Promise<DoubanItem[]>[] = [];
 
-    if (doubanResult.list && doubanResult.list.length > 0) {
-      // 缓存24小时
-      await db.setGlobalCache(cacheKey, doubanResult.list, 60 * 60 * 24);
+    for (let i = 0; i < pageCount; i++) {
+      promises.push(
+        getDoubanList({
+          tag: '热门',
+          type: 'tv',
+          pageLimit: pageLimit,
+          pageStart: i * pageLimit,
+        }).then((res) => res.list)
+      );
     }
 
-    return doubanResult.list;
+    const results = await Promise.all(promises);
+    const combinedList = results.flat();
+
+    if (combinedList.length > 0) {
+      // 缓存24小时
+      await db.setGlobalCache(cacheKey, combinedList, 60 * 60 * 24);
+    }
+
+    return combinedList;
   }
 
   // 获取用户全部播放记录

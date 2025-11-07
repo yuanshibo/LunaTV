@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getConfig } from '@/lib/config';
 import { db } from '@/lib/db';
+import { discoverSort } from '@/lib/discover_sort';
 
 export const runtime = 'nodejs';
 
@@ -120,6 +121,23 @@ export async function POST(req: NextRequest) {
         secure: false, // 根据协议自动设置
       });
 
+      // 异步检查并触发AI推荐缓存
+      (async () => {
+        try {
+          const username = process.env.USERNAME || 'test';
+          const cacheKey = `discover:${username}`;
+          const cachedData = await db.getGlobalCache(cacheKey);
+          if (!cachedData) {
+            console.log(
+              `No discover cache found for user ${username}, triggering sort...`
+            );
+            await discoverSort.sort(username);
+          }
+        } catch (e) {
+          console.error('Failed to trigger discover sort on login:', e);
+        }
+      })();
+
       return response;
     }
 
@@ -156,6 +174,22 @@ export async function POST(req: NextRequest) {
         httpOnly: false, // PWA 需要客户端可访问
         secure: false, // 根据协议自动设置
       });
+
+      // 异步检查并触发AI推荐缓存
+      (async () => {
+        try {
+          const cacheKey = `discover:${username}`;
+          const cachedData = await db.getGlobalCache(cacheKey);
+          if (!cachedData) {
+            console.log(
+              `No discover cache found for user ${username}, triggering sort...`
+            );
+            await discoverSort.sort(username);
+          }
+        } catch (e) {
+          console.error('Failed to trigger discover sort on login:', e);
+        }
+      })();
 
       return response;
     } else if (username === process.env.USERNAME) {
@@ -196,6 +230,22 @@ export async function POST(req: NextRequest) {
         httpOnly: false, // PWA 需要客户端可访问
         secure: false, // 根据协议自动设置
       });
+
+      // 异步检查并触发AI推荐缓存
+      (async () => {
+        try {
+          const cacheKey = `discover:${username}`;
+          const cachedData = await db.getGlobalCache(cacheKey);
+          if (!cachedData) {
+            console.log(
+              `No discover cache found for user ${username}, triggering sort...`
+            );
+            await discoverSort.sort(username);
+          }
+        } catch (e) {
+          console.error('Failed to trigger discover sort on login:', e);
+        }
+      })();
 
       return response;
     } catch (err) {
