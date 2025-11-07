@@ -12,10 +12,10 @@ jobs:
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      
+
       - name: Extract metadata
         id: meta
         run: |
@@ -25,26 +25,26 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "Repository: ${REPO_PATH}"
           echo "Version: ${VERSION}"
-      
+
       - name: Build Docker image to local daemon
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64
-          push: false  # ローカルDockerデーモンにのみ保存
-          load: true   # ローカルDockerデーモンにロード
+          push: false # ローカルDockerデーモンにのみ保存
+          load: true # ローカルDockerデーモンにロード
           tags: |
             ${{ steps.meta.outputs.repo_path }}:${{ steps.meta.outputs.version }}
             ${{ steps.meta.outputs.repo_path }}:latest
-      
+
       - name: Verify built images
         run: |
           echo "Built Docker images:"
           docker images | grep "${{ steps.meta.outputs.repo_path }}"
           echo "Docker daemon info:"
           docker system info | grep "Docker Root Dir"
-      
+
       - name: Stop existing container (if running)
         run: |
           if docker ps -q -f name=lunatv; then
@@ -54,7 +54,7 @@ jobs:
           else
             echo "No existing lunatv container found"
           fi
-      
+
       - name: Create and start new container
         run: |
           echo "Starting new container with updated image..."
@@ -67,7 +67,7 @@ jobs:
             -e NEXT_PUBLIC_STORAGE_TYPE=redis \
             -e REDIS_URL=redis://192.168.10.103:6379 \
             ${{ steps.meta.outputs.repo_path }}:${{ steps.meta.outputs.version }}
-      
+
       - name: Verify deployment
         run: |
           echo "Container status:"
@@ -79,7 +79,7 @@ jobs:
           echo "Waiting for container to be ready..."
           sleep 10
           docker logs lunatv --tail 10
-      
+
       - name: Health check
         run: |
           echo "Testing container health..."

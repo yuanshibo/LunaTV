@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 
-import { getDoubanList } from './douban.client';
 import { db } from './db';
+import { getDoubanList } from './douban.client';
 import { DoubanItem } from './types';
 
 // AI 排序核心逻辑
@@ -23,13 +23,16 @@ export class DiscoverSort {
   // 获取用户全部播放记录
   private async getAllPlayRecords(
     userName: string
-  ): Promise<Record<string, any>> {
+  ): Promise<Record<string, { play_time: number; total_time: number }>> {
     console.log(`Fetching play records for user: ${userName}...`);
     return db.getAllPlayRecords(userName);
   }
 
   // 计算播放权重
-  private calculatePlayWeight(playRecord: any): number {
+  private calculatePlayWeight(playRecord: {
+    play_time: number;
+    total_time: number;
+  }): number {
     if (!playRecord || !playRecord.total_time) {
       return 0;
     }

@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { getAuthInfoFromCookie } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { DoubanItem } from '@/lib/types';
-import { getLoggedInUser } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   try {
-    const user = await getLoggedInUser();
-    if (!user) {
+    const user = getAuthInfoFromCookie(request);
+    if (!user?.username) {
       return NextResponse.json({ error: 'Not logged in' }, { status: 401 });
     }
 
@@ -22,7 +22,10 @@ export async function GET(request: NextRequest) {
     );
 
     if (!cachedList) {
-      return NextResponse.json({ error: 'No cached list found' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'No cached list found' },
+        { status: 404 }
+      );
     }
 
     const paginatedList = cachedList.slice(start, start + limit);
@@ -32,7 +35,6 @@ export async function GET(request: NextRequest) {
       total: cachedList.length,
     });
   } catch (error) {
-    console.error('Failed to fetch discover content:', error);
     return NextResponse.json(
       { error: 'Failed to fetch discover content' },
       { status: 500 }

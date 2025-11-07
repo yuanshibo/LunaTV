@@ -239,11 +239,7 @@ export class DbManager {
     return null;
   }
 
-  async setGlobalCache<T>(
-    key: string,
-    data: T,
-    ttl?: number
-  ): Promise<void> {
+  async setGlobalCache<T>(key: string, data: T, ttl?: number): Promise<void> {
     if (typeof (this.storage as any).setGlobalCache === 'function') {
       await (this.storage as any).setGlobalCache(key, data, ttl);
     }

@@ -289,11 +289,7 @@ export class UpstashRedisStorage implements IStorage {
     return val as T | null;
   }
 
-  async setGlobalCache<T>(
-    key: string,
-    data: T,
-    ttl?: number
-  ): Promise<void> {
+  async setGlobalCache<T>(key: string, data: T, ttl?: number): Promise<void> {
     if (ttl) {
       await withRetry(() =>
         this.client.set(this.globalCacheKey(key), data, { ex: ttl })
