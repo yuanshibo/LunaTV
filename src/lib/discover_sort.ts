@@ -6,7 +6,7 @@ import {
   getDoubanList,
   getDoubanRecommends,
 } from './douban.client';
-import { DoubanItem } from './types';
+import { DoubanItem, PlayRecord } from './types';
 
 // AI 排序核心逻辑
 export class DiscoverSort {
@@ -49,7 +49,7 @@ export class DiscoverSort {
   // 获取用户全部播放记录
   private async getAllPlayRecords(
     userName: string
-  ): Promise<Record<string, { play_time: number; total_time: number }>> {
+  ): Promise<{ [key: string]: PlayRecord }> {
     console.log(`Fetching play records for user: ${userName}...`);
     return db.getAllPlayRecords(userName);
   }
@@ -68,7 +68,7 @@ export class DiscoverSort {
     }
 
     const playRecords = await this.getAllPlayRecords(userName);
-    const watchedTitles = Object.values(playRecords).map((r: any) => r.title).filter(Boolean);
+    const watchedTitles = Object.values(playRecords).map((r) => r.title).filter(Boolean);
 
     if (watchedTitles.length === 0) {
       console.log('User has no play records. Returning Top 500 list as fallback.');

@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     let user = getAuthInfoFromCookie(request);
     if (!user?.username) {
       const defaultUsername = process.env.USERNAME || 'test';
-      user = { username: defaultUsername, is_admin: false };
+      user = { username: defaultUsername };
     }
 
     const { searchParams } = new URL(request.url);
@@ -39,7 +39,6 @@ export async function GET(request: NextRequest) {
       total: cachedList.length,
     });
   } catch (error) {
-    console.error('Failed to fetch discover content:', error);
     return NextResponse.json(
       { error: 'Failed to fetch discover content' },
       { status: 500 }
