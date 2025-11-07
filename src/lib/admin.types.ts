@@ -1,4 +1,6 @@
 export interface AdminConfig {
+  doubanProxyType?: string;
+  doubanProxyUrl?: string;
   ConfigSubscribtion: {
     URL: string;
     AutoUpdate: boolean;

@@ -52,6 +52,8 @@ import AlertModal from '@/components/AlertModal';
 import DataMigration from '@/components/DataMigration';
 import PageLayout from '@/components/PageLayout';
 
+import AiConfigComponent from './AiConfigComponent';
+
 // 新增站点配置类型
 interface SiteConfig {
   SiteName: string;
