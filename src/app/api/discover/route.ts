@@ -9,27 +9,15 @@ export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   try {
-    const user = getAuthInfoFromCookie(request);
+    const adminConfig = await db.getAdminConfig();
+    if (!adminConfig?.AiConfig?.host) {
+      return NextResponse.json({ list: [], total: 0 });
+    }
+
+    let user = getAuthInfoFromCookie(request);
     if (!user?.username) {
-      // In a real-world scenario, you'd want to handle this case more gracefully.
-      // For this implementation, we'll try to fall back to a default user
-      // to ensure the frontend can still display recommendations for guests
-      // or in case of auth issues during testing.
       const defaultUsername = process.env.USERNAME || 'test';
-      const cachedList = await db.getGlobalCache<DoubanItem[]>(
-        `discover:${defaultUsername}`
-      );
-      if (!cachedList) {
-        return NextResponse.json({ list: [], total: 0 });
-      }
-      const { searchParams } = new URL(request.url);
-      const start = parseInt(searchParams.get('start') || '0', 10);
-      const limit = parseInt(searchParams.get('limit') || '25', 10);
-      const paginatedList = cachedList.slice(start, start + limit);
-      return NextResponse.json({
-        list: paginatedList,
-        total: cachedList.length,
-      });
+      user = { username: defaultUsername, is_admin: false };
     }
 
     const { searchParams } = new URL(request.url);

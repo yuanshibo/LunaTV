@@ -55,6 +55,13 @@ interface DoubanRecommendApiResponse {
   }>;
 }
 
+interface DoubanDetailApiResponse {
+  id: string;
+  title: string;
+  intro: string;
+  // Add other fields as needed
+}
+
 /**
  * 带超时的 fetch 请求
  */
@@ -489,5 +496,41 @@ async function fetchDoubanRecommends(
     };
   } catch (error) {
     throw new Error(`获取豆瓣推荐数据失败: ${(error as Error).message}`);
+  }
+}
+
+export async function getDoubanDetail(id: string): Promise<DoubanDetailApiResponse | null> {
+  const { proxyType, proxyUrl } = await getDoubanProxyConfig();
+
+  let target = `https://movie.douban.com/api/v2/movie/${id}`;
+  let useCDN = false;
+
+  switch (proxyType) {
+    case 'cmliussss-cdn-tencent':
+      target = `https://movie.douban.cmliussss.net/api/v2/movie/${id}`;
+      useCDN = true;
+      break;
+    case 'cmliussss-cdn-ali':
+      target = `https://movie.douban.cmliussss.com/api/v2/movie/${id}`;
+      useCDN = true;
+      break;
+    // other proxy cases can be added here if needed
+  }
+
+  try {
+    const response = await fetchWithTimeout(target, useCDN ? '' : proxyUrl);
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null; // Not found is a valid case
+      }
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+
+    const doubanData: DoubanDetailApiResponse = await response.json();
+    return doubanData;
+  } catch (error) {
+    console.error(`获取豆瓣详情失败 (ID: ${id}):`, error);
+    throw new Error(`获取豆瓣详情失败: ${(error as Error).message}`);
   }
 }
