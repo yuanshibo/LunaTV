@@ -56,14 +56,14 @@ export class DiscoverSort {
 
   // AI-based sorting (Two-Stage)
   public async sort(userName: string): Promise<DoubanItem[]> {
-    console.log(`Starting Two-Stage AI sorting for user: ${userName}...`);
+    console.log(`[AI Sort] Starting Two-Stage AI sorting for user: ${userName}...`);
 
     const adminConfig = await db.getAdminConfig();
     const aiConfig = adminConfig?.AiConfig;
 
     if (!aiConfig?.host) {
-      console.log('AI host not configured. Skipping AI sorting.');
-      await db.setGlobalCache(`discover:${userName}`, [], 60 * 60 * 24);
+      console.log('[AI Sort] AI host not configured. Aborting.');
+      await db.setGlobalCache(`discover:${userName}`, [], 1); // Set a short expiry for empty cache
       return [];
     }
 
@@ -71,54 +71,60 @@ export class DiscoverSort {
     const watchedTitles = Object.values(playRecords).map((r) => r.title).filter(Boolean);
 
     if (watchedTitles.length === 0) {
-      console.log('User has no play records. Returning Top 500 list as fallback.');
+      console.log('[AI Sort] User has no play records. Falling back to Top 500 list.');
       return this.getDoubanTop500();
     }
+    console.log(`[AI Sort] User has ${watchedTitles.length} watched titles.`);
 
+    // =======================================================================
     // Stage 1: AI Exploration & Strategy Generation
-    let candidateItems: DoubanItem[] = [];
+    // =======================================================================
+    let explorationCandidates: DoubanItem[] = [];
     try {
-      console.log('Stage 1: AI generating search strategies...');
+      console.log('[AI Sort] Stage 1: AI generating search strategies...');
       const explorationPrompt = this.buildExplorationPrompt(watchedTitles);
-      const combinations = await this.callOllama(aiConfig, explorationPrompt);
+      const combinationsJson = await this.callOllama(aiConfig, explorationPrompt);
+      const parsedResult = JSON.parse(combinationsJson);
+      const combinations = parsedResult.combinations;
 
-      const parsedCombinations = JSON.parse(combinations).combinations;
-      if (!Array.isArray(parsedCombinations) || parsedCombinations.length === 0) {
+      if (!Array.isArray(combinations) || combinations.length === 0) {
         throw new Error('AI did not return valid combinations.');
       }
+      console.log('[AI Sort] AI returned valid search combinations:', combinations);
 
-      console.log(`AI returned ${parsedCombinations.length} search combinations.`);
-
-      const recommendPromises = parsedCombinations.map((combo) =>
-        getDoubanRecommends({ kind: 'tv', ...combo, pageLimit: 50 }).then(
+      const recommendPromises = combinations.map((combo) =>
+        getDoubanRecommends({ ...combo, pageLimit: 50 }).then(
           (res) => res.list
         )
       );
       const recommendResults = await Promise.all(recommendPromises);
+
       const uniqueItems = new Map<string, DoubanItem>();
       recommendResults.flat().forEach((item) => {
         if (!uniqueItems.has(item.id)) {
           uniqueItems.set(item.id, item);
         }
       });
-      candidateItems = Array.from(uniqueItems.values());
-      console.log(`Found ${candidateItems.length} unique candidates from combinations.`);
+      explorationCandidates = Array.from(uniqueItems.values());
+      console.log(`[AI Sort] Stage 1 successful. Found ${explorationCandidates.length} unique candidates.`);
 
     } catch (error) {
-      console.error('Error in Stage 1 (AI Exploration). Falling back to Top 500 list.', error);
-      candidateItems = await this.getDoubanTop500();
+      console.error('[AI Sort] Error in Stage 1 (AI Exploration). Falling back to Top 500 list.', error);
+      explorationCandidates = await this.getDoubanTop500();
     }
 
-    if (candidateItems.length === 0) {
-      console.log('No candidates found. Returning empty list.');
+    if (explorationCandidates.length === 0) {
+      console.log('[AI Sort] No candidates found after Stage 1. Returning empty list.');
       return [];
     }
 
+    // =======================================================================
     // Stage 2: AI Ranking
+    // =======================================================================
     try {
-      console.log('Stage 2: AI ranking candidates...');
+      console.log('[AI Sort] Stage 2: Fetching details and ranking candidates...');
       const detailedItems = await Promise.all(
-        candidateItems.map(async (item) => {
+        explorationCandidates.map(async (item) => {
           const detail = await getDoubanDetail(item.id);
           return {
             id: item.id,
@@ -136,22 +142,30 @@ export class DiscoverSort {
         throw new Error('AI did not return a valid sorted list of IDs.');
       }
 
-      console.log('Successfully received sorted list from AI.');
-      const sortedMap = new Map(sortedIds.map((id, index) => [id, index]));
+      console.log('[AI Sort] Stage 2 successful. Received sorted list from AI.');
 
-      const sortedList = [...candidateItems].sort((a, b) => {
+      // Create a map for efficient lookup of the sorted order
+      const sortedMap = new Map(sortedIds.map((id, index) => [id.toString(), index]));
+
+      // Sort the original `explorationCandidates` array based on the AI's sorted IDs
+      const finalSortedList = [...explorationCandidates].sort((a, b) => {
         const aIndex = sortedMap.get(a.id);
         const bIndex = sortedMap.get(b.id);
+
+        // Items not in the sorted list are pushed to the end
         if (aIndex === undefined) return 1;
         if (bIndex === undefined) return -1;
+
         return aIndex - bIndex;
       });
 
-      return sortedList;
+      console.log(`[AI Sort] Final list contains ${finalSortedList.length} items.`);
+      return finalSortedList;
 
     } catch (error) {
-      console.error('Error in Stage 2 (AI Ranking). Returning candidates without final ranking.', error);
-      return candidateItems; // Fallback to un-ranked but relevant list
+      console.error('[AI Sort] Error in Stage 2 (AI Ranking). Returning candidates without final ranking.', error);
+      // Fallback to the un-ranked but highly relevant candidate list from Stage 1
+      return explorationCandidates;
     }
   }
 
@@ -178,21 +192,22 @@ export class DiscoverSort {
 
   private buildExplorationPrompt(watchedTitles: string[]): string {
     return `
-      A user has watched the following TV shows: ${watchedTitles.join(', ')}.
+      A user has watched the following titles: ${watchedTitles.join(', ')}.
 
-      Analyze this user's viewing preferences. Based on your analysis, generate 2 to 3 diverse search-condition combinations to find new, interesting shows for them.
+      Analyze this user's viewing preferences. Based on your analysis, generate 2 to 3 diverse search-condition combinations to find new, interesting movies and TV shows for them.
 
       Available search dimensions are:
+      - kind: "movie", "tv"
       - category: "剧情", "喜剧", "动作", "爱情", "科幻", "悬疑", "惊悚", "恐怖", "犯罪"
       - region: "中国大陆", "美国", "香港", "台湾", "日本", "韩国", "英国", "法国"
       - year: "2024", "2023", "2020s", "2010s"
       - label: "经典", "高分", "冷门佳片", "HBO"
 
-      Please return ONLY a valid JSON object in the following format:
+      Please return ONLY a valid JSON object in the following format, making sure to include the 'kind' in each combination:
       {
         "combinations": [
-          { "category": "...", "region": "...", "year": "..." },
-          { "label": "...", "category": "..." }
+          { "kind": "movie", "category": "科幻", "label": "高分" },
+          { "kind": "tv", "category": "剧情", "region": "中国大陆" }
         ]
       }
     `.trim();
