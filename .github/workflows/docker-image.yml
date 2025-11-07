@@ -61,11 +61,11 @@ jobs:
           docker run -d \
             --name lunatv \
             --restart on-failure \
-            -p 3000:3000 \
+            -p 3005:3000 \
             -e USERNAME=ysb \
             -e PASSWORD=424008 \
             -e NEXT_PUBLIC_STORAGE_TYPE=redis \
-            -e REDIS_URL=redis://192.168.86.51:6379 \
+            -e REDIS_URL=redis://192.168.10.103:6379 \
             ${{ steps.meta.outputs.repo_path }}:${{ steps.meta.outputs.version }}
       
       - name: Verify deployment
@@ -84,7 +84,7 @@ jobs:
         run: |
           echo "Testing container health..."
           for i in {1..30}; do
-            if curl -f http://192.168.86.51:3000 > /dev/null 2>&1; then
+            if curl -f http://192.168.86.51:3005 > /dev/null 2>&1; then
               echo "✅ Container is healthy and responding"
               break
             else
