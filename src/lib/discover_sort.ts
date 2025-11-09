@@ -54,8 +54,8 @@ async function explorationStage(
   `;
 
   const criteria = await callOllama(
-    config.SiteConfig.ollama_host || OLLAMA_HOST_DEFAULT,
-    config.SiteConfig.ollama_model || 'llama3',
+    config.AIConfig.ollama_host || OLLAMA_HOST_DEFAULT,
+    config.AIConfig.ollama_model || 'llama3',
     prompt,
     true
   );
@@ -82,8 +82,8 @@ async function rankingStage(
   `;
 
   const sortedIds = await callOllama(
-    config.SiteConfig.ollama_host || OLLAMA_HOST_DEFAULT,
-    config.SiteConfig.ollama_model || 'llama3',
+    config.AIConfig.ollama_host || OLLAMA_HOST_DEFAULT,
+    config.AIConfig.ollama_model || 'llama3',
     prompt,
     true
   );
@@ -99,7 +99,7 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
   }
 
   const config = await getConfig();
-  if (!config.SiteConfig.ollama_host) {
+  if (!config.AIConfig.ollama_host) {
     console.log('Ollama host not configured, skipping AI sort.');
     return [];
   }
