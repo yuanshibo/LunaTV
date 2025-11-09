@@ -2,7 +2,7 @@
 
 import { createClient, RedisClientType } from 'redis';
 
-import { AdminConfig } from './admin.types';
+import { AdminConfig, AIConfig } from './admin.types';
 import { Favorite, IStorage, PlayRecord, SkipConfig } from './types';
 
 // 搜索历史最大条数
@@ -364,12 +364,35 @@ export abstract class BaseRedisStorage implements IStorage {
 
   async getAdminConfig(): Promise<AdminConfig | null> {
     const val = await this.withRetry(() => this.client.get(this.adminConfigKey()));
-    return val ? (JSON.parse(val) as AdminConfig) : null;
+    const adminConfig = val ? (JSON.parse(val) as AdminConfig) : null;
+    if (adminConfig) {
+      adminConfig.AIConfig = (await this.getAIConfig()) || { ollama_host: '', ollama_model: '' };
+    }
+    return adminConfig;
   }
 
   async setAdminConfig(config: AdminConfig): Promise<void> {
+    const { AIConfig, ...restConfig } = config;
     await this.withRetry(() =>
-      this.client.set(this.adminConfigKey(), JSON.stringify(config))
+      this.client.set(this.adminConfigKey(), JSON.stringify(restConfig))
+    );
+    if (AIConfig) {
+      await this.setAIConfig(AIConfig);
+    }
+  }
+
+  private aiConfigKey() {
+    return 'admin:ai_config';
+  }
+
+  async getAIConfig(): Promise<AIConfig | null> {
+    const val = await this.withRetry(() => this.client.get(this.aiConfigKey()));
+    return val ? (JSON.parse(val) as AIConfig) : null;
+  }
+
+  async setAIConfig(config: AIConfig): Promise<void> {
+    await this.withRetry(() =>
+      this.client.set(this.aiConfigKey(), JSON.stringify(config))
     );
   }
 
