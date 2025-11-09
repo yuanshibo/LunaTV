@@ -198,6 +198,10 @@ export async function getInitConfig(configFile: string, subConfig: {
     cfgFile = {} as ConfigFileStruct;
   }
   const adminConfig: AdminConfig = {
+    AIConfig: {
+      ollama_host: '',
+      ollama_model: '',
+    },
     ConfigFile: configFile,
     ConfigSubscribtion: subConfig,
     SiteConfig: {
