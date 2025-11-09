@@ -49,6 +49,11 @@ async function callOllama(
 
   const data = await res.json();
   console.log('Ollama response:', JSON.stringify(data, null, 2));
+
+  if (data.done === false) {
+    throw new Error('Ollama response was not complete.');
+  }
+
   return isJson ? JSON.parse(data.response) : data.response;
 }
 
