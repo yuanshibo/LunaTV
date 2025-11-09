@@ -3,7 +3,7 @@
 import { AdminConfig } from './admin.types';
 import { getConfig } from './config';
 import { db } from './db';
-import { getDoubanRecommends } from './douban.client';
+import { getDoubanRecommends } from './douban.server';
 import { Douban, SearchResult, User, WatchHistory } from './types';
 
 const OLLAMA_HOST_DEFAULT = 'http://localhost:11434';
@@ -130,8 +130,10 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
 
   // Stage 1: Exploration
   const searchCriteria = await explorationStage(config, history);
-  const candidatePromises = searchCriteria.map((criteria: { kind: 'tv' | 'movie'; category: string; label: string }) =>
-    getDoubanRecommends(criteria)
+  const candidatePromises = searchCriteria.map(async (criteria: { kind: 'tv' | 'movie'; category: string; label: string }) => {
+    const result = await getDoubanRecommends(criteria);
+    return result.list;
+  }
   );
   const results = await Promise.all(candidatePromises);
   const candidates = Array.from(new Set(results.flat())); // Flatten and deduplicate
