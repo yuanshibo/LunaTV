@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
       FluidSearch,
       ollama_host,
       ollama_model,
+      AIEnabled,
     } = body as {
       SiteName: string;
       Announcement: string;
@@ -54,6 +55,7 @@ export async function POST(request: NextRequest) {
       FluidSearch: boolean;
       ollama_host: string;
       ollama_model: string;
+      AIEnabled: boolean;
     };
 
     // 参数校验
@@ -67,7 +69,8 @@ export async function POST(request: NextRequest) {
       typeof DoubanImageProxyType !== 'string' ||
       typeof DoubanImageProxy !== 'string' ||
       typeof DisableYellowFilter !== 'boolean' ||
-      typeof FluidSearch !== 'boolean'
+      typeof FluidSearch !== 'boolean' ||
+      typeof AIEnabled !== 'boolean'
     ) {
       return NextResponse.json({ error: '参数格式错误' }, { status: 400 });
     }
@@ -100,6 +103,7 @@ export async function POST(request: NextRequest) {
       FluidSearch,
       ollama_host,
       ollama_model,
+      AIEnabled,
     };
 
     // 写入数据库

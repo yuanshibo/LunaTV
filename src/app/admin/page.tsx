@@ -3383,25 +3383,28 @@ const AIConfigComponent = ({ config, refreshConfig }: { config: AdminConfig | nu
   const { alertModal, showAlert, hideAlert } = useAlertModal();
   const { isLoading, withLoading } = useLoadingState();
   const [aiSettings, setAiSettings] = useState({
-    Enabled: false,
-    AIProvider: 'ollama',
-    OllamaHost: '',
-    OllamaModel: '',
+    AIEnabled: false,
+    ollama_host: '',
+    ollama_model: '',
   });
 
   useEffect(() => {
-    if (config?.AIConfig) {
-      setAiSettings(config.AIConfig);
+    if (config?.SiteConfig) {
+      setAiSettings({
+        AIEnabled: config.SiteConfig.AIEnabled || false,
+        ollama_host: config.SiteConfig.ollama_host || '',
+        ollama_model: config.SiteConfig.ollama_model || '',
+      });
     }
   }, [config]);
 
   const handleSave = async () => {
     await withLoading('saveAIConfig', async () => {
       try {
-        const resp = await fetch('/api/admin/ai', {
+        const resp = await fetch('/api/admin/site', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...aiSettings }),
+          body: JSON.stringify({ ...config?.SiteConfig, ...aiSettings }),
         });
 
         if (!resp.ok) {
@@ -3438,16 +3441,16 @@ const AIConfigComponent = ({ config, refreshConfig }: { config: AdminConfig | nu
             onClick={() =>
               setAiSettings((prev) => ({
                 ...prev,
-                Enabled: !prev.Enabled,
+                AIEnabled: !prev.AIEnabled,
               }))
             }
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${aiSettings.Enabled
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${aiSettings.AIEnabled
                 ? buttonStyles.toggleOn
                 : buttonStyles.toggleOff
               }`}
           >
             <span
-              className={`inline-block h-4 w-4 transform rounded-full ${buttonStyles.toggleThumb} transition-transform ${aiSettings.Enabled
+              className={`inline-block h-4 w-4 transform rounded-full ${buttonStyles.toggleThumb} transition-transform ${aiSettings.AIEnabled
                   ? buttonStyles.toggleThumbOn
                   : buttonStyles.toggleThumbOff
                 }`}
@@ -3457,20 +3460,6 @@ const AIConfigComponent = ({ config, refreshConfig }: { config: AdminConfig | nu
         <p className='mt-1 text-xs text-gray-500 dark:text-gray-400'>
           启用后将在“发现”页面提供 AI 推荐内容
         </p>
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-          AI 提供商
-        </label>
-        <select
-          value={aiSettings.AIProvider}
-          onChange={(e) =>
-            setAiSettings((prev) => ({ ...prev, AIProvider: e.target.value }))
-          }
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-green-500 focus:border-transparent"
-        >
-          <option value='ollama'>Ollama</option>
-        </select>
       </div>
 
       {/* AI 配置 */}
@@ -3482,9 +3471,9 @@ const AIConfigComponent = ({ config, refreshConfig }: { config: AdminConfig | nu
           </label>
           <input
             type='text'
-            value={aiSettings.OllamaHost}
+            value={aiSettings.ollama_host}
             onChange={(e) =>
-              setAiSettings((prev) => ({ ...prev, OllamaHost: e.target.value }))
+              setAiSettings((prev) => ({ ...prev, ollama_host: e.target.value }))
             }
             placeholder='例如: http://127.0.0.1:11434'
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-green-500 focus:border-transparent"
@@ -3496,9 +3485,9 @@ const AIConfigComponent = ({ config, refreshConfig }: { config: AdminConfig | nu
           </label>
           <input
             type='text'
-            value={aiSettings.OllamaModel}
+            value={aiSettings.ollama_model}
             onChange={(e) =>
-              setAiSettings((prev) => ({ ...prev, OllamaModel: e.target.value }))
+              setAiSettings((prev) => ({ ...prev, ollama_model: e.target.value }))
             }
             placeholder='例如: llama3'
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-green-500 focus:border-transparent"

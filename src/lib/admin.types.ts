@@ -18,12 +18,7 @@ export interface AdminConfig {
     FluidSearch: boolean;
     ollama_host?: string;
     ollama_model?: string;
-  };
-  AIConfig: {
-    Enabled: boolean;
-    AIProvider: string;
-    OllamaHost: string;
-    OllamaModel: string;
+    AIEnabled?: boolean;
   };
   UserConfig: {
     Users: {
