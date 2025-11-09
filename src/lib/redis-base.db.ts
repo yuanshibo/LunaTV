@@ -364,21 +364,13 @@ export abstract class BaseRedisStorage implements IStorage {
 
   async getAdminConfig(): Promise<AdminConfig | null> {
     const val = await this.withRetry(() => this.client.get(this.adminConfigKey()));
-    const adminConfig = val ? (JSON.parse(val) as AdminConfig) : null;
-    if (adminConfig) {
-      adminConfig.AIConfig = (await this.getAIConfig()) || { ollama_host: '', ollama_model: '' };
-    }
-    return adminConfig;
+    return val ? (JSON.parse(val) as AdminConfig) : null;
   }
 
   async setAdminConfig(config: AdminConfig): Promise<void> {
-    const { AIConfig, ...restConfig } = config;
     await this.withRetry(() =>
-      this.client.set(this.adminConfigKey(), JSON.stringify(restConfig))
+      this.client.set(this.adminConfigKey(), JSON.stringify(config))
     );
-    if (AIConfig) {
-      await this.setAIConfig(AIConfig);
-    }
   }
 
   private aiConfigKey() {

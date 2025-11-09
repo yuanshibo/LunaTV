@@ -270,19 +270,11 @@ export class UpstashRedisStorage implements IStorage {
 
   async getAdminConfig(): Promise<AdminConfig | null> {
     const val = await withRetry(() => this.client.get(this.adminConfigKey()));
-    const adminConfig = val ? (val as AdminConfig) : null;
-    if (adminConfig) {
-      adminConfig.AIConfig = (await this.getAIConfig()) || { ollama_host: '', ollama_model: '' };
-    }
-    return adminConfig;
+    return val ? (val as AdminConfig) : null;
   }
 
   async setAdminConfig(config: AdminConfig): Promise<void> {
-    const { AIConfig, ...restConfig } = config;
-    await withRetry(() => this.client.set(this.adminConfigKey(), restConfig));
-    if (AIConfig) {
-      await this.setAIConfig(AIConfig);
-    }
+    await withRetry(() => this.client.set(this.adminConfigKey(), config));
   }
 
   private aiConfigKey() {
