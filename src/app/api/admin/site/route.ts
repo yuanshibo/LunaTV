@@ -39,8 +39,6 @@ export async function POST(request: NextRequest) {
       DoubanImageProxy,
       DisableYellowFilter,
       FluidSearch,
-      ollama_host,
-      ollama_model,
     } = body as {
       SiteName: string;
       Announcement: string;
@@ -52,8 +50,6 @@ export async function POST(request: NextRequest) {
       DoubanImageProxy: string;
       DisableYellowFilter: boolean;
       FluidSearch: boolean;
-      ollama_host: string;
-      ollama_model: string;
     };
 
     // 参数校验
@@ -98,8 +94,6 @@ export async function POST(request: NextRequest) {
       DoubanImageProxy,
       DisableYellowFilter,
       FluidSearch,
-      ollama_host,
-      ollama_model,
     };
 
     // 写入数据库
