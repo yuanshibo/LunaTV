@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any,no-console,no-case-declarations */
 
-import { DoubanItem, DoubanResult } from './types';
 import { getConfig } from './config';
+import { DoubanItem, DoubanResult } from './types';
 
 interface DoubanRecommendApiResponse {
   total: number;
@@ -69,8 +69,8 @@ async function getDoubanProxyConfig(): Promise<{
   proxyUrl: string;
 }> {
     const config = await getConfig();
-  const doubanProxyType = config.SiteConfig.douban_proxy_type || 'cmliussss-cdn-tencent';
-  const doubanProxy = config.SiteConfig.douban_proxy_url || '';
+  const doubanProxyType = config.SiteConfig.DoubanProxyType || 'cmliussss-cdn-tencent';
+  const doubanProxy = config.SiteConfig.DoubanProxy || '';
   return {
     proxyType: doubanProxyType,
     proxyUrl: doubanProxy,
@@ -93,18 +93,6 @@ export interface DoubanRecommendsParams {
 export async function getDoubanRecommends(
   params: DoubanRecommendsParams
 ): Promise<DoubanResult> {
-  const {
-    kind,
-    pageLimit = 20,
-    pageStart = 0,
-    category,
-    format,
-    label,
-    region,
-    year,
-    platform,
-    sort,
-  } = params;
   const { proxyType, proxyUrl } = await getDoubanProxyConfig();
   switch (proxyType) {
     case 'cors-proxy-zwei':
