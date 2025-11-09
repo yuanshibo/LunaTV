@@ -1,6 +1,6 @@
 /* eslint-disable no-console, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 
-import { AdminConfig } from './admin.types';
+import { AdminConfig, AIConfig } from './admin.types';
 import { KvrocksStorage } from './kvrocks.db';
 import { RedisStorage } from './redis.db';
 import { Favorite, IStorage, PlayRecord, SkipConfig } from './types';
@@ -186,6 +186,19 @@ export class DbManager {
   async saveAdminConfig(config: AdminConfig): Promise<void> {
     if (typeof (this.storage as any).setAdminConfig === 'function') {
       await (this.storage as any).setAdminConfig(config);
+    }
+  }
+
+  async getAIConfig(): Promise<AIConfig | null> {
+    if (typeof (this.storage as any).getAIConfig === 'function') {
+      return (this.storage as any).getAIConfig();
+    }
+    return null;
+  }
+
+  async setAIConfig(config: AIConfig): Promise<void> {
+    if (typeof (this.storage as any).setAIConfig === 'function') {
+      await (this.storage as any).setAIConfig(config);
     }
   }
 

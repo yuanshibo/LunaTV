@@ -65,6 +65,8 @@ export interface IStorage {
   // 管理员配置相关
   getAdminConfig(): Promise<AdminConfig | null>;
   setAdminConfig(config: AdminConfig): Promise<void>;
+  getAIConfig(): Promise<AIConfig | null>;
+  setAIConfig(config: AIConfig): Promise<void>;
 
   // 跳过片头片尾配置相关
   getSkipConfig(

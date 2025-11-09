@@ -2,7 +2,7 @@
 
 import { Redis } from '@upstash/redis';
 
-import { AdminConfig } from './admin.types';
+import { AdminConfig, AIConfig } from './admin.types';
 import { Favorite, IStorage, PlayRecord, SkipConfig } from './types';
 
 // 搜索历史最大条数
@@ -270,11 +270,32 @@ export class UpstashRedisStorage implements IStorage {
 
   async getAdminConfig(): Promise<AdminConfig | null> {
     const val = await withRetry(() => this.client.get(this.adminConfigKey()));
-    return val ? (val as AdminConfig) : null;
+    const adminConfig = val ? (val as AdminConfig) : null;
+    if (adminConfig) {
+      adminConfig.AIConfig = (await this.getAIConfig()) || { ollama_host: '', ollama_model: '' };
+    }
+    return adminConfig;
   }
 
   async setAdminConfig(config: AdminConfig): Promise<void> {
-    await withRetry(() => this.client.set(this.adminConfigKey(), config));
+    const { AIConfig, ...restConfig } = config;
+    await withRetry(() => this.client.set(this.adminConfigKey(), restConfig));
+    if (AIConfig) {
+      await this.setAIConfig(AIConfig);
+    }
+  }
+
+  private aiConfigKey() {
+    return 'admin:ai_config';
+  }
+
+  async getAIConfig(): Promise<AIConfig | null> {
+    const val = await withRetry(() => this.client.get(this.aiConfigKey()));
+    return val ? (val as AIConfig) : null;
+  }
+
+  async setAIConfig(config: AIConfig): Promise<void> {
+    await withRetry(() => this.client.set(this.aiConfigKey(), config));
   }
 
   // ---------- 跳过片头片尾配置 ----------
