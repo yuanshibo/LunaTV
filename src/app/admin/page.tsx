@@ -3378,6 +3378,163 @@ const ConfigFileComponent = ({ config, refreshConfig }: { config: AdminConfig | 
   );
 };
 
+// 新增AI配置组件
+const AIConfigComponent = ({ config, refreshConfig }: { config: AdminConfig | null; refreshConfig: () => Promise<void> }) => {
+  const { alertModal, showAlert, hideAlert } = useAlertModal();
+  const { isLoading, withLoading } = useLoadingState();
+  const [aiSettings, setAiSettings] = useState({
+    Enabled: false,
+    AIProvider: 'ollama',
+    OllamaHost: '',
+    OllamaModel: '',
+  });
+
+  useEffect(() => {
+    if (config?.AIConfig) {
+      setAiSettings(config.AIConfig);
+    }
+  }, [config]);
+
+  const handleSave = async () => {
+    await withLoading('saveAIConfig', async () => {
+      try {
+        const resp = await fetch('/api/admin/ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...aiSettings }),
+        });
+
+        if (!resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          throw new Error(data.error || `保存失败: ${resp.status}`);
+        }
+
+        showSuccess('保存成功, 请刷新页面', showAlert);
+        await refreshConfig();
+      } catch (err) {
+        showError(err instanceof Error ? err.message : '保存失败', showAlert);
+        throw err;
+      }
+    });
+  };
+
+  if (!config) {
+    return (
+      <div className='text-center text-gray-500 dark:text-gray-400'>
+        加载中...
+      </div>
+    );
+  }
+
+  return (
+    <div className='space-y-6'>
+      <div>
+        <div className='flex items-center justify-between'>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            启用 AI 推荐
+          </label>
+          <button
+            type='button'
+            onClick={() =>
+              setAiSettings((prev) => ({
+                ...prev,
+                Enabled: !prev.Enabled,
+              }))
+            }
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${aiSettings.Enabled
+                ? buttonStyles.toggleOn
+                : buttonStyles.toggleOff
+              }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full ${buttonStyles.toggleThumb} transition-transform ${aiSettings.Enabled
+                  ? buttonStyles.toggleThumbOn
+                  : buttonStyles.toggleThumbOff
+                }`}
+            />
+          </button>
+        </div>
+        <p className='mt-1 text-xs text-gray-500 dark:text-gray-400'>
+          启用后将在“发现”页面提供 AI 推荐内容
+        </p>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          AI 提供商
+        </label>
+        <select
+          value={aiSettings.AIProvider}
+          onChange={(e) =>
+            setAiSettings((prev) => ({ ...prev, AIProvider: e.target.value }))
+          }
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+        >
+          <option value='ollama'>Ollama</option>
+        </select>
+      </div>
+
+      {/* AI 配置 */}
+      <div className='border-t border-gray-200 dark:border-gray-700 pt-6'>
+        <h3 className='text-md font-semibold text-gray-800 dark:text-gray-200 mb-4'>Ollama 配置</h3>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Ollama Host
+          </label>
+          <input
+            type='text'
+            value={aiSettings.OllamaHost}
+            onChange={(e) =>
+              setAiSettings((prev) => ({ ...prev, OllamaHost: e.target.value }))
+            }
+            placeholder='例如: http://127.0.0.1:11434'
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+          />
+        </div>
+        <div className='mt-4'>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Ollama Model
+          </label>
+          <input
+            type='text'
+            value={aiSettings.OllamaModel}
+            onChange={(e) =>
+              setAiSettings((prev) => ({ ...prev, OllamaModel: e.target.value }))
+            }
+            placeholder='例如: llama3'
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+          />
+        </div>
+      </div>
+
+
+      {/* 操作按钮 */}
+      <div className='flex justify-end'>
+        <button
+          onClick={handleSave}
+          disabled={isLoading('saveAIConfig')}
+          className={`px-4 py-2 ${isLoading('saveAIConfig')
+            ? buttonStyles.disabled
+            : buttonStyles.success
+            } rounded-lg transition-colors`}
+        >
+          {isLoading('saveAIConfig') ? '保存中…' : '保存'}
+        </button>
+      </div>
+
+      {/* 通用弹窗组件 */}
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        onClose={hideAlert}
+        type={alertModal.type}
+        title={alertModal.title}
+        message={alertModal.message}
+        timer={alertModal.timer}
+        showConfirm={alertModal.showConfirm}
+      />
+    </div>
+  );
+};
+
 // 新增站点配置组件
 const SiteConfigComponent = ({ config, refreshConfig }: { config: AdminConfig | null; refreshConfig: () => Promise<void> }) => {
   const { alertModal, showAlert, hideAlert } = useAlertModal();
@@ -4543,6 +4700,7 @@ function AdminPageClient() {
     categoryConfig: false,
     configFile: false,
     dataMigration: false,
+    aiConfig: false,
   });
 
   // 获取管理员配置
@@ -4685,6 +4843,21 @@ function AdminPageClient() {
             onToggle={() => toggleTab('siteConfig')}
           >
             <SiteConfigComponent config={config} refreshConfig={fetchConfig} />
+          </CollapsibleTab>
+
+          {/* AI 配置标签 */}
+          <CollapsibleTab
+            title='AI 配置'
+            icon={
+              <Settings
+                size={20}
+                className='text-gray-600 dark:text-gray-400'
+              />
+            }
+            isExpanded={expandedTabs.aiConfig}
+            onToggle={() => toggleTab('aiConfig')}
+          >
+            <AIConfigComponent config={config} refreshConfig={fetchConfig} />
           </CollapsibleTab>
 
           <div className='space-y-4'>
