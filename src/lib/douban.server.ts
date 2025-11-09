@@ -69,7 +69,7 @@ async function getDoubanProxyConfig(): Promise<{
   proxyUrl: string;
 }> {
     const config = await getConfig();
-  const doubanProxyType = config.SiteConfig.DoubanProxyType || 'cmliussss-cdn-tencent';
+  const doubanProxyType = (config.SiteConfig.DoubanProxyType || 'cmliussss-cdn-tencent') as | 'direct' | 'cors-proxy-zwei' | 'cmliussss-cdn-tencent' | 'cmliussss-cdn-ali' | 'cors-anywhere' | 'custom';
   const doubanProxy = config.SiteConfig.DoubanProxy || '';
   return {
     proxyType: doubanProxyType,
