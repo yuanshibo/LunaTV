@@ -70,3 +70,14 @@ export function getAuthInfoFromBrowserCookie(): {
     return null;
   }
 }
+
+export function getUserFromRequest(request: NextRequest) {
+  const authInfo = getAuthInfoFromCookie(request);
+  if (!authInfo || !authInfo.username) {
+    return null;
+  }
+  return {
+    username: authInfo.username,
+    role: authInfo.role,
+  };
+}
