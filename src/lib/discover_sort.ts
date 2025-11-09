@@ -21,6 +21,8 @@ async function callOllama(
     ...(isJson ? { format: 'json' } : {}),
   };
 
+  console.log('Ollama Request Body:', JSON.stringify(body, null, 2));
+
   const res = await fetch(`${ollamaHost}/api/generate`, {
     method: 'POST',
     headers: {
@@ -36,6 +38,7 @@ async function callOllama(
   }
 
   const data = await res.json();
+  console.log('Ollama Response:', JSON.stringify(data, null, 2));
   return isJson ? JSON.parse(data.response) : data.response;
 }
 
