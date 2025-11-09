@@ -24,6 +24,7 @@ import { CSS } from '@dnd-kit/utilities';
 import {
   AlertCircle,
   AlertTriangle,
+  Bot,
   Check,
   CheckCircle,
   ChevronDown,
@@ -3393,8 +3394,6 @@ const SiteConfigComponent = ({ config, refreshConfig }: { config: AdminConfig | 
     DoubanImageProxy: '',
     DisableYellowFilter: false,
     FluidSearch: true,
-    ollama_host: '',
-    ollama_model: '',
   });
 
   // 豆瓣数据源相关状态
@@ -3457,8 +3456,6 @@ const SiteConfigComponent = ({ config, refreshConfig }: { config: AdminConfig | 
         DoubanImageProxy: config.SiteConfig.DoubanImageProxy || '',
         DisableYellowFilter: config.SiteConfig.DisableYellowFilter || false,
         FluidSearch: config.SiteConfig.FluidSearch || true,
-        ollama_host: config.SiteConfig.ollama_host || '',
-        ollama_model: config.SiteConfig.ollama_model || '',
       });
     }
   }, [config]);
@@ -3910,40 +3907,6 @@ const SiteConfigComponent = ({ config, refreshConfig }: { config: AdminConfig | 
           启用后搜索结果将实时流式返回，提升用户体验。
         </p>
       </div>
-
-      {/* AI 配置 */}
-      <div className='border-t border-gray-200 dark:border-gray-700 pt-6'>
-        <h3 className='text-md font-semibold text-gray-800 dark:text-gray-200 mb-4'>AI 推荐配置</h3>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Ollama Host
-          </label>
-          <input
-            type='text'
-            value={siteSettings.ollama_host}
-            onChange={(e) =>
-              setSiteSettings((prev) => ({ ...prev, ollama_host: e.target.value }))
-            }
-            placeholder='例如: http://127.0.0.1:11434'
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-green-500 focus:border-transparent"
-          />
-        </div>
-        <div className='mt-4'>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Ollama Model
-          </label>
-          <input
-            type='text'
-            value={siteSettings.ollama_model}
-            onChange={(e) =>
-              setSiteSettings((prev) => ({ ...prev, ollama_model: e.target.value }))
-            }
-            placeholder='例如: llama3'
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-green-500 focus:border-transparent"
-          />
-        </div>
-      </div>
-
 
       {/* 操作按钮 */}
       <div className='flex justify-end'>
@@ -4527,6 +4490,121 @@ const LiveSourceConfig = ({
   );
 };
 
+// 新增 AI 配置组件
+const AIConfigComponent = ({ config, refreshConfig }: { config: AdminConfig | null; refreshConfig: () => Promise<void> }) => {
+  const { alertModal, showAlert, hideAlert } = useAlertModal();
+  const { isLoading, withLoading } = useLoadingState();
+  const [aiSettings, setAiSettings] = useState({
+    ollama_host: '',
+    ollama_model: '',
+  });
+
+  useEffect(() => {
+    if (config?.SiteConfig) {
+      setAiSettings({
+        ollama_host: config.SiteConfig.ollama_host || '',
+        ollama_model: config.SiteConfig.ollama_model || '',
+      });
+    }
+  }, [config]);
+
+  // 保存 AI 配置
+  const handleSave = async () => {
+    await withLoading('saveAIConfig', async () => {
+      try {
+        const resp = await fetch('/api/admin/ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...aiSettings }),
+        });
+
+        if (!resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          throw new Error(data.error || `保存失败: ${resp.status}`);
+        }
+
+        showSuccess('保存成功, 请刷新页面', showAlert);
+        await refreshConfig();
+      } catch (err) {
+        showError(err instanceof Error ? err.message : '保存失败', showAlert);
+        throw err;
+      }
+    });
+  };
+
+  if (!config) {
+    return (
+      <div className='text-center text-gray-500 dark:text-gray-400'>
+        加载中...
+      </div>
+    );
+  }
+
+  return (
+    <div className='space-y-6'>
+      {/* AI 配置 */}
+      <div className='border-t border-gray-200 dark:border-gray-700 pt-6'>
+        <h3 className='text-md font-semibold text-gray-800 dark:text-gray-200 mb-4'>AI 推荐配置</h3>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Ollama Host
+          </label>
+          <input
+            type='text'
+            value={aiSettings.ollama_host}
+            onChange={(e) =>
+              setAiSettings((prev) => ({ ...prev, ollama_host: e.target.value }))
+            }
+            placeholder='例如: http://127.0.0.1:11434'
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+          />
+        </div>
+        <div className='mt-4'>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Ollama Model
+          </label>
+          <input
+            type='text'
+            value={aiSettings.ollama_model}
+            onChange={(e) =>
+              setAiSettings((prev) => ({ ...prev, ollama_model: e.target.value }))
+            }
+            placeholder='例如: llama3'
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+          />
+        </div>
+      </div>
+
+
+      {/* 操作按钮 */}
+      <div className='flex justify-end'>
+        <button
+          onClick={handleSave}
+          disabled={isLoading('saveAIConfig')}
+          className={`px-4 py-2 ${isLoading('saveAIConfig')
+            ? buttonStyles.disabled
+            : buttonStyles.success
+            } rounded-lg transition-colors`}
+        >
+          {isLoading('saveAIConfig') ? '保存中…' : '保存'}
+        </button>
+      </div>
+
+      {/* 通用弹窗组件 */}
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        onClose={hideAlert}
+        type={alertModal.type}
+        title={alertModal.title}
+        message={alertModal.message}
+        timer={alertModal.timer}
+        showConfirm={alertModal.showConfirm}
+      />
+    </div>
+  );
+};
+
+
 function AdminPageClient() {
   const { alertModal, showAlert, hideAlert } = useAlertModal();
   const { isLoading, withLoading } = useLoadingState();
@@ -4543,6 +4621,7 @@ function AdminPageClient() {
     categoryConfig: false,
     configFile: false,
     dataMigration: false,
+    aiConfig: false,
   });
 
   // 获取管理员配置
@@ -4686,6 +4765,21 @@ function AdminPageClient() {
           >
             <SiteConfigComponent config={config} refreshConfig={fetchConfig} />
           </CollapsibleTab>
+
+        {/* AI 配置标签 */}
+        <CollapsibleTab
+          title='AI 配置'
+          icon={
+            <Bot
+              size={20}
+              className='text-gray-600 dark:text-gray-400'
+            />
+          }
+          isExpanded={expandedTabs.aiConfig}
+          onToggle={() => toggleTab('aiConfig')}
+        >
+          <AIConfigComponent config={config} refreshConfig={fetchConfig} />
+        </CollapsibleTab>
 
           <div className='space-y-4'>
             {/* 用户配置标签 */}

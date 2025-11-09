@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any,no-console */
 
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -29,41 +28,17 @@ export async function POST(request: NextRequest) {
     const username = authInfo.username;
 
     const {
-      SiteName,
-      Announcement,
-      SearchDownstreamMaxPage,
-      SiteInterfaceCacheTime,
-      DoubanProxyType,
-      DoubanProxy,
-      DoubanImageProxyType,
-      DoubanImageProxy,
-      DisableYellowFilter,
-      FluidSearch,
+      ollama_host,
+      ollama_model,
     } = body as {
-      SiteName: string;
-      Announcement: string;
-      SearchDownstreamMaxPage: number;
-      SiteInterfaceCacheTime: number;
-      DoubanProxyType: string;
-      DoubanProxy: string;
-      DoubanImageProxyType: string;
-      DoubanImageProxy: string;
-      DisableYellowFilter: boolean;
-      FluidSearch: boolean;
+      ollama_host: string;
+      ollama_model: string;
     };
 
     // 参数校验
     if (
-      typeof SiteName !== 'string' ||
-      typeof Announcement !== 'string' ||
-      typeof SearchDownstreamMaxPage !== 'number' ||
-      typeof SiteInterfaceCacheTime !== 'number' ||
-      typeof DoubanProxyType !== 'string' ||
-      typeof DoubanProxy !== 'string' ||
-      typeof DoubanImageProxyType !== 'string' ||
-      typeof DoubanImageProxy !== 'string' ||
-      typeof DisableYellowFilter !== 'boolean' ||
-      typeof FluidSearch !== 'boolean'
+      typeof ollama_host !== 'string' ||
+      typeof ollama_model !== 'string'
     ) {
       return NextResponse.json({ error: '参数格式错误' }, { status: 400 });
     }
@@ -84,16 +59,8 @@ export async function POST(request: NextRequest) {
     // 更新缓存中的站点设置
     adminConfig.SiteConfig = {
       ...adminConfig.SiteConfig,
-      SiteName,
-      Announcement,
-      SearchDownstreamMaxPage,
-      SiteInterfaceCacheTime,
-      DoubanProxyType,
-      DoubanProxy,
-      DoubanImageProxyType,
-      DoubanImageProxy,
-      DisableYellowFilter,
-      FluidSearch,
+      ollama_host,
+      ollama_model,
     };
 
     // 写入数据库
@@ -108,10 +75,10 @@ export async function POST(request: NextRequest) {
       }
     );
   } catch (error) {
-    console.error('更新站点配置失败:', error);
+    console.error('更新AI配置失败:', error);
     return NextResponse.json(
       {
-        error: '更新站点配置失败',
+        error: '更新AI配置失败',
         details: (error as Error).message,
       },
       { status: 500 }
