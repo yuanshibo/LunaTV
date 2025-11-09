@@ -1,3 +1,9 @@
 
-> moontv@0.1.0 dev
+> moontv@0.1.0 dev /app
 > pnpm gen:manifest && next dev -H 0.0.0.0
+
+
+> moontv@0.1.0 gen:manifest /app
+> node scripts/generate-manifest.js
+
+✅ Generated manifest.json with site name: MoonTV

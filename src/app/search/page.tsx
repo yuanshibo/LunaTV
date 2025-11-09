@@ -714,7 +714,9 @@ function SearchPageClient() {
               {/* 标题 */}
               <div className='mb-4'>
                 <h2 className='text-xl font-bold text-gray-800 dark:text-gray-200'>
-                  {searchResults.length > 0 ? '搜索结果' : '为你推荐'}
+                  {searchQuery.trim() && searchResults.length > 0
+                    ? '搜索结果'
+                    : '为你推荐'}
                   {totalSources > 0 && useFluidSearch && (
                     <span className='ml-2 text-sm font-normal text-gray-500 dark:text-gray-400'>
                       {completedSources}/{totalSources}
@@ -759,12 +761,12 @@ function SearchPageClient() {
                   </div>
                 </label>
               </div>
-              {searchResults.length === 0 ? (
-                isLoading ? (
-                  <div className='flex justify-center items-center h-40'>
-                    <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-green-500'></div>
-                  </div>
-                ) : recommendations.length > 0 ? (
+              {isLoading ? (
+                <div className='flex justify-center items-center h-40'>
+                  <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-green-500'></div>
+                </div>
+              ) : searchResults.length === 0 ? (
+                recommendations.length > 0 ? (
                   <div
                     key='recommendations'
                     className='justify-start grid grid-cols-3 gap-x-2 gap-y-14 sm:gap-y-20 px-0 sm:px-2 sm:grid-cols-[repeat(auto-fill,_minmax(11rem,_1fr))] sm:gap-x-8'
@@ -794,6 +796,7 @@ function SearchPageClient() {
                     未找到相关结果
                   </div>
                 )
+              )
               ) : (
                 <div
                   key={`search-results-${viewMode}`}
