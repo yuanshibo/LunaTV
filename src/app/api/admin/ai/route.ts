@@ -1,18 +1,17 @@
 // src/app/api/admin/ai/route.ts
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
-import { DbManager } from '@/lib/db';
-import { getAuthInfo } from '@/lib/auth';
+import { getAuthInfoFromCookie } from '@/lib/auth';
+import { db } from '@/lib/db';
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const authInfo = await getAuthInfo();
-    if (!authInfo.role || (authInfo.role !== 'owner' && authInfo.role !== 'admin')) {
+    const authInfo = getAuthInfoFromCookie(req);
+    if (!authInfo || !authInfo.role || (authInfo.role !== 'owner' && authInfo.role !== 'admin')) {
       return NextResponse.json({ error: '权限不足' }, { status: 403 });
     }
 
     const { ollama_host, ollama_model } = await req.json();
-    const db = new DbManager();
     await db.setAIConfig({
       ollama_host: ollama_host || '',
       ollama_model: ollama_model || '',
