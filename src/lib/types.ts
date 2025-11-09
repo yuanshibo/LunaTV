@@ -83,6 +83,10 @@ export interface IStorage {
 
   // 数据清理相关
   clearAllData(): Promise<void>;
+
+  // Generic key-value store
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string, ttl?: number): Promise<void>;
 }
 
 // 搜索结果数据结构
@@ -122,3 +126,13 @@ export interface SkipConfig {
   intro_time: number; // 片头时间（秒）
   outro_time: number; // 片尾时间（秒）
 }
+
+export interface User {
+  username: string;
+}
+
+export type WatchHistory = PlayRecord;
+
+export type Douban = DoubanItem & {
+  intro?: string;
+};

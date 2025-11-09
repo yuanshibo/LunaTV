@@ -371,7 +371,7 @@ export async function getDoubanRecommends(
   }
 }
 
-async function fetchDoubanRecommends(
+export async function fetchDoubanRecommends(
   params: DoubanRecommendsParams,
   proxyUrl: string,
   useTencentCDN = false,

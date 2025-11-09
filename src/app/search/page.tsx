@@ -39,6 +39,7 @@ function SearchPageClient() {
   const pendingResultsRef = useRef<SearchResult[]>([]);
   const flushTimerRef = useRef<number | null>(null);
   const [useFluidSearch, setUseFluidSearch] = useState(true);
+  const [recommendations, setRecommendations] = useState<SearchResult[]>([]);
   // 聚合卡片 refs 与聚合统计缓存
   const groupRefs = useRef<Map<string, React.RefObject<VideoCardHandle>>>(new Map());
   const groupStatsRef = useRef<Map<string, { douban_id?: number; episodes?: number; source_names: string[] }>>(new Map());
@@ -391,6 +392,16 @@ function SearchPageClient() {
 
     document.body.addEventListener('scroll', handleScroll, { passive: true });
 
+    if (!searchParams.get('q')) {
+      fetch('/api/discover')
+        .then((res) => res.json())
+        .then((data) => {
+          if (Array.isArray(data)) {
+            setRecommendations(data);
+          }
+        });
+    }
+
     return () => {
       unsubscribe();
       isRunning = false; // 停止 requestAnimationFrame 循环
@@ -703,7 +714,7 @@ function SearchPageClient() {
               {/* 标题 */}
               <div className='mb-4'>
                 <h2 className='text-xl font-bold text-gray-800 dark:text-gray-200'>
-                  搜索结果
+                  {searchResults.length > 0 ? '搜索结果' : '为你推荐'}
                   {totalSources > 0 && useFluidSearch && (
                     <span className='ml-2 text-sm font-normal text-gray-500 dark:text-gray-400'>
                       {completedSources}/{totalSources}
@@ -752,6 +763,31 @@ function SearchPageClient() {
                 isLoading ? (
                   <div className='flex justify-center items-center h-40'>
                     <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-green-500'></div>
+                  </div>
+                ) : recommendations.length > 0 ? (
+                  <div
+                    key='recommendations'
+                    className='justify-start grid grid-cols-3 gap-x-2 gap-y-14 sm:gap-y-20 px-0 sm:px-2 sm:grid-cols-[repeat(auto-fill,_minmax(11rem,_1fr))] sm:gap-x-8'
+                  >
+                    {recommendations.map((item) => (
+                      <div
+                        key={`rec-${item.source}-${item.id}`}
+                        className='w-full'
+                      >
+                        <VideoCard
+                          id={item.id}
+                          title={item.title}
+                          poster={item.poster}
+                          episodes={item.episodes.length}
+                          source={item.source}
+                          source_name={item.source_name}
+                          douban_id={item.douban_id}
+                          year={item.year}
+                          from='search'
+                          type={item.episodes.length > 1 ? 'tv' : 'movie'}
+                        />
+                      </div>
+                    ))}
                   </div>
                 ) : (
                   <div className='text-center text-gray-500 py-8 dark:text-gray-400'>

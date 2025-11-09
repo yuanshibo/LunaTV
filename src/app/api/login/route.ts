@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getConfig } from '@/lib/config';
 import { db } from '@/lib/db';
+import { discoverSort } from '@/lib/discover_sort';
+import { User } from '@/lib/types';
 
 export const runtime = 'nodejs';
 
@@ -120,6 +122,9 @@ export async function POST(req: NextRequest) {
         secure: false, // 根据协议自动设置
       });
 
+      // Trigger AI recommendation generation asynchronously
+      discoverSort({ username: 'default' } as User);
+
       return response;
     }
 
@@ -196,6 +201,9 @@ export async function POST(req: NextRequest) {
         httpOnly: false, // PWA 需要客户端可访问
         secure: false, // 根据协议自动设置
       });
+
+      // Trigger AI recommendation generation asynchronously
+      discoverSort({ username: username } as User);
 
       return response;
     } catch (err) {

@@ -463,4 +463,17 @@ export abstract class BaseRedisStorage implements IStorage {
       throw new Error('清空数据失败');
     }
   }
+
+  // ---------- Generic key-value store ----------
+  async get(key: string): Promise<string | null> {
+    return this.withRetry(() => this.client.get(key));
+  }
+
+  async set(key: string, value: string, ttl?: number): Promise<void> {
+    if (ttl) {
+      await this.withRetry(() => this.client.set(key, value, { EX: ttl }));
+    } else {
+      await this.withRetry(() => this.client.set(key, value));
+    }
+  }
 }

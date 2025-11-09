@@ -16,6 +16,8 @@ export interface AdminConfig {
     DoubanImageProxy: string;
     DisableYellowFilter: boolean;
     FluidSearch: boolean;
+    ollama_host?: string;
+    ollama_model?: string;
   };
   UserConfig: {
     Users: {
