@@ -107,8 +107,7 @@ export async function getDoubanRecommends(
       return fetchDoubanRecommends(params, proxyUrl);
     case 'direct':
     default:
-        //This should not be called on server side
-      throw new Error('Direct Douban API call is not supported on server side.');
+      return fetchDoubanRecommends(params, '');
   }
 }
 

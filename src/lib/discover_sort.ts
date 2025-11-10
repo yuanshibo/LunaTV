@@ -48,7 +48,9 @@ async function callOllama(
   }
 
   const data = await res.json();
-  console.log('Ollama response:', JSON.stringify(data, null, 2));
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { context, ...logData } = data;
+  console.log('Ollama response:', JSON.stringify(logData, null, 2));
 
   if (data.done === false) {
     throw new Error('Ollama response was not complete.');
