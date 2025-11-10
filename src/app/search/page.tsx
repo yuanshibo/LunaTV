@@ -714,9 +714,7 @@ function SearchPageClient() {
               {/* 标题 */}
               <div className='mb-4'>
                 <h2 className='text-xl font-bold text-gray-800 dark:text-gray-200'>
-                  {searchQuery.trim() && searchResults.length > 0
-                    ? '搜索结果'
-                    : '为你推荐'}
+                  {searchQuery.trim() && searchResults.length > 0 ? '搜索结果' : (recommendations.length > 0 ? '为你推荐' : '')}
                   {totalSources > 0 && useFluidSearch && (
                     <span className='ml-2 text-sm font-normal text-gray-500 dark:text-gray-400'>
                       {completedSources}/{totalSources}
@@ -761,7 +759,7 @@ function SearchPageClient() {
                   </div>
                 </label>
               </div>
-              {isLoading ? (
+              {isLoading && searchResults.length === 0 ? (
                 <div className='flex justify-center items-center h-40'>
                   <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-green-500'></div>
                 </div>
