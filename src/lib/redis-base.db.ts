@@ -108,8 +108,18 @@ export function createRedisClient(config: RedisConnectionConfig, globalSymbol: s
       console.error(`${config.clientName} client error:`, err);
     });
 
-    client.on('connect', () => {
+    client.on('connect', async () => {
       console.log(`${config.clientName} connected`);
+      // Clear AI recommendation cache on startup
+      try {
+        const keys = await client!.keys('discover_sort_user_*');
+        if (keys.length > 0) {
+          await client!.del(keys);
+          console.log(`Cleared ${keys.length} AI recommendation caches.`);
+        }
+      } catch (err) {
+        console.error('Failed to clear AI recommendation cache:', err);
+      }
     });
 
     client.on('reconnecting', () => {
