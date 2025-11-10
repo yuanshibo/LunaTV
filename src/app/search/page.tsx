@@ -796,7 +796,6 @@ function SearchPageClient() {
                     未找到相关结果
                   </div>
                 )
-              )
               ) : (
                 <div
                   key={`search-results-${viewMode}`}
