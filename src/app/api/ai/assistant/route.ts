@@ -94,7 +94,13 @@ export async function POST(request: NextRequest) {
     });
 
     const results = await Promise.all(candidatePromises);
-    const candidates = Array.from(new Set(results.flat()));
+    const uniqueCandidatesMap = new Map<string, any>();
+    results.flat().forEach(candidate => {
+      if (candidate && candidate.title && !uniqueCandidatesMap.has(candidate.title)) {
+        uniqueCandidatesMap.set(candidate.title, candidate);
+      }
+    });
+    const candidates = Array.from(uniqueCandidatesMap.values());
 
     // We can optionally add a re-ranking stage here as well for better results.
     // For simplicity, we'll return the candidates directly for now.

@@ -282,11 +282,20 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
       }
     });
     const results = await Promise.all(candidatePromises);
-    const candidates = Array.from(new Set(results.flat()));
+    const uniqueCandidatesMap = new Map<string, Douban>();
+    results.flat().forEach(candidate => {
+      if (candidate && candidate.title && !uniqueCandidatesMap.has(candidate.title)) {
+        uniqueCandidatesMap.set(candidate.title, candidate);
+      }
+    });
+    const candidates = Array.from(uniqueCandidatesMap.values());
 
     let sortedCandidates: Douban[];
     try {
       const sortedIds = await rankingStage(config, recentHistory, candidates);
+      if (!Array.isArray(sortedIds)) {
+        throw new Error('AI ranking did not return a valid array of IDs.');
+      }
       sortedCandidates = sortedIds.map((id: string) => candidates.find((c) => c.id === id)).filter(Boolean) as Douban[];
     } catch (error) {
       console.error("Fallback: AI ranking failed, returning un-ranked candidates:", error);
@@ -353,11 +362,20 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
       }
     });
     const results = await Promise.all(candidatePromises);
-    const candidates = Array.from(new Set(results.flat()));
+    const uniqueCandidatesMap = new Map<string, Douban>();
+    results.flat().forEach(candidate => {
+      if (candidate && candidate.title && !uniqueCandidatesMap.has(candidate.title)) {
+        uniqueCandidatesMap.set(candidate.title, candidate);
+      }
+    });
+    const candidates = Array.from(uniqueCandidatesMap.values());
     console.log(`Found ${candidates.length} unique candidates from profile-based search.`);
 
     // Re-rank the candidates based on the profile and recent history.
     const sortedIds = await rankingStage(config, recentHistory, candidates);
+    if (!Array.isArray(sortedIds)) {
+      throw new Error('AI ranking did not return a valid array of IDs.');
+    }
     const sortedCandidates = sortedIds.map((id: string) => candidates.find((c) => c.id === id)).filter(Boolean) as Douban[];
 
     const finalResult = sortedCandidates.map(item => ({
