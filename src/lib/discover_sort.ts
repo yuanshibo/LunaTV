@@ -135,14 +135,21 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
 
   // Stage 1: Exploration
   const searchCriteria = await explorationStage(config, history);
+  console.log('Fetching candidates based on criteria...');
   const candidatePromises = searchCriteria.map(async (criteria: { kind: 'tv' | 'movie'; category: string; label: string }) => {
-    const result = await getDoubanRecommends(criteria);
-    return result.list;
-  }
-  );
+    try {
+      console.log(`Fetching hot recommends for criteria:`, criteria);
+      const result = await getDoubanRecommends(criteria);
+      console.log(`Found ${result.list.length} items for criteria:`, criteria);
+      return result.list;
+    } catch (error) {
+      console.error(`Error fetching recommendations for criteria ${JSON.stringify(criteria)}:`, error);
+      return []; // Return empty array on error
+    }
+  });
   const results = await Promise.all(candidatePromises);
   const candidates = Array.from(new Set(results.flat())); // Flatten and deduplicate
-  console.log(`Found ${candidates.length} candidates after exploration.`);
+  console.log(`Found ${candidates.length} unique candidates after exploration.`);
 
   // Stage 2: Ranking
   let sortedCandidates: Douban[];
