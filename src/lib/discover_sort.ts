@@ -8,6 +8,20 @@ import { Douban, SearchResult, User, WatchHistory } from './types';
 
 const OLLAMA_HOST_DEFAULT = 'http://localhost:11434';
 
+const AVAILABLE_SEARCH_FILTERS = {
+  movie: {
+    category: ["喜剧", "爱情", "动作", "科幻", "悬疑", "犯罪", "惊悚", "冒险", "音乐", "历史", "奇幻", "恐怖", "战争", "传记", "歌舞", "武侠", "情色", "灾难", "西部", "纪录片", "短片"],
+    region: ["华语", "欧美", "韩国", "日本", "中国大陆", "美国", "中国香港", "中国台湾", "英国", "法国", "德国", "意大利", "西班牙", "印度", "泰国", "俄罗斯", "加拿大", "澳大利亚", "爱尔兰", "瑞典", "巴西", "丹麦"],
+    year: ["2020年代", "2025", "2024", "2023", "2022", "2021", "2020", "2019", "2010年代", "2000年代", "90年代", "80年代", "70年代", "60年代", "更早"],
+  },
+  tv: {
+    category: ["喜剧", "爱情", "悬疑", "武侠", "古装", "家庭", "犯罪", "科幻", "恐怖", "历史", "战争", "动作", "冒险", "传记", "剧情", "奇幻", "惊悚", "灾难", "歌舞", "音乐"],
+    region: ["华语", "欧美", "国外", "韩国", "日本", "中国大陆", "中国香港", "美国", "英国", "泰国", "中国台湾", "意大利", "法国", "德国", "西班牙", "俄罗斯", "瑞典", "巴西", "丹麦", "印度", "加拿大", "爱尔兰", "澳大利亚"],
+    year: ["2020年代", "2025", "2024", "2023", "2022", "2021", "2020", "2019", "2010年代", "2000年代", "90年代", "80年代", "70年代", "60年代", "更早"],
+    platform: ["腾讯视频", "爱奇艺", "优酷", "湖南卫视", "Netflix", "HBO", "BBC", "NHK", "CBS", "NBC", "tvN"],
+  }
+};
+
 async function callOllama(
   ollamaHost: string,
   model: string,
@@ -69,8 +83,15 @@ async function explorationStage(
   const prompt = `
     The user has watched the following titles: ${titles}.
     Based on their viewing history, please generate 2-3 diverse Douban search criteria combinations to discover new content they might like.
-    The available search parameters are: "kind" (e.g., "movie", "tv"), "category" (e.g., "科幻", "悬疑", "动作"), and "label" (e.g., "高分", "经典", "冷门").
-    Return the response as a JSON object with a key "combinations", which is an array of criteria objects.
+
+    You MUST use the following available search parameters. Choose "kind" first, then pick values from the corresponding categories.
+    - "kind": "movie" or "tv".
+    - "category":
+      - For "movie": [${AVAILABLE_SEARCH_FILTERS.movie.category.join(', ')}]
+      - For "tv": [${AVAILABLE_SEARCH_FILTERS.tv.category.join(', ')}]
+    - "label": You can optionally use labels like "高分", "经典", "冷门".
+
+    Return the response as a JSON object with a key "combinations", which is an array of criteria objects. Do not invent new categories.
     Example format: {"combinations": [{ "kind": "movie", "category": "科幻", "label": "高分" }, ...]}
   `;
 
@@ -303,8 +324,13 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
     **Your Task:**
     1.  Synthesize the long-term profile with their immediate interests.
     2.  Generate a list of 2-3 diverse Douban search criteria combinations that reflect this synthesis.
-    3.  The available search parameters are: "kind" (e.g., "movie", "tv"), "category" (e.g., "科幻", "悬疑"), and "label" (e.g., "高分", "经典").
-    4.  Return the response as a JSON object with a key "combinations", which is an array of criteria objects.
+    3.  You MUST use the following available search parameters. Choose "kind" first, then pick values from the corresponding categories.
+        - "kind": "movie" or "tv".
+        - "category":
+          - For "movie": [${AVAILABLE_SEARCH_FILTERS.movie.category.join(', ')}]
+          - For "tv": [${AVAILABLE_SEARCH_FILTERS.tv.category.join(', ')}]
+        - "label": You can optionally use labels like "高分", "经典", "冷门".
+    4.  Return the response as a JSON object with a key "combinations", which is an array of criteria objects. Do not invent new categories.
         Example format: {"combinations": [{ "kind": "movie", "category": "科幻", "label": "高分" }, ...]}
   `;
 
