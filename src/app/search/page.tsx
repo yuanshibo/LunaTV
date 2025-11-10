@@ -40,6 +40,11 @@ function SearchPageClient() {
   const flushTimerRef = useRef<number | null>(null);
   const [useFluidSearch, setUseFluidSearch] = useState(true);
   const [recommendations, setRecommendations] = useState<SearchResult[]>([]);
+  const [recommendationPage, setRecommendationPage] = useState(1);
+  const [hasMoreRecommendations, setHasMoreRecommendations] = useState(true);
+  const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false);
+  const loadMoreRef = useRef(null);
+
   // 聚合卡片 refs 与聚合统计缓存
   const groupRefs = useRef<Map<string, React.RefObject<VideoCardHandle>>>(new Map());
   const groupStatsRef = useRef<Map<string, { douban_id?: number; episodes?: number; source_names: string[] }>>(new Map());
@@ -336,6 +341,47 @@ function SearchPageClient() {
     });
   }, [aggregatedResults, filterAgg, searchQuery]);
 
+  const fetchRecommendations = async (page: number) => {
+    if (isRecommendationsLoading || !hasMoreRecommendations) return;
+
+    setIsRecommendationsLoading(true);
+    try {
+      const response = await fetch(`/api/discover?page=${page}&limit=25`);
+      const data = await response.json();
+      if (data.results && data.results.length > 0) {
+        setRecommendations((prev) => [...prev, ...data.results]);
+        setRecommendationPage(page + 1);
+      }
+      setHasMoreRecommendations(data.hasMore);
+    } catch (error) {
+      console.error('Failed to fetch recommendations:', error);
+    } finally {
+      setIsRecommendationsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          fetchRecommendations(recommendationPage);
+        }
+      },
+      { threshold: 1.0 }
+    );
+
+    if (loadMoreRef.current) {
+      observer.observe(loadMoreRef.current);
+    }
+
+    return () => {
+      if (loadMoreRef.current) {
+        observer.unobserve(loadMoreRef.current);
+      }
+    };
+  }, [recommendationPage, hasMoreRecommendations, isRecommendationsLoading]);
+
+
   useEffect(() => {
     // 无搜索参数时聚焦搜索框
     !searchParams.get('q') && document.getElementById('searchInput')?.focus();
@@ -393,13 +439,7 @@ function SearchPageClient() {
     document.body.addEventListener('scroll', handleScroll, { passive: true });
 
     if (!searchParams.get('q')) {
-      fetch('/api/discover')
-        .then((res) => res.json())
-        .then((data) => {
-          if (Array.isArray(data)) {
-            setRecommendations(data);
-          }
-        });
+      fetchRecommendations(1);
     }
 
     return () => {
@@ -863,35 +903,6 @@ function SearchPageClient() {
             </section>
           ) : (
             <>
-              {recommendations.length > 0 && (
-                <section className='mb-12'>
-                  <h2 className='mb-4 text-xl font-bold text-gray-800 text-left dark:text-gray-200'>为你推荐</h2>
-                  <div
-                    key='recommendations'
-                    className='justify-start grid grid-cols-3 gap-x-2 gap-y-14 sm:gap-y-20 px-0 sm:px-2 sm:grid-cols-[repeat(auto-fill,_minmax(11rem,_1fr))] sm:gap-x-8'
-                  >
-                    {recommendations.map((item) => (
-                      <div
-                        key={`rec-${item.source}-${item.id}`}
-                        className='w-full'
-                      >
-                        <VideoCard
-                          id={item.id}
-                          title={item.title}
-                          poster={item.poster}
-                          episodes={item.episodes.length}
-                          source={item.source}
-                          source_name={item.source_name}
-                          douban_id={item.douban_id}
-                          year={item.year}
-                          from='search'
-                          type={item.episodes.length > 1 ? 'tv' : 'movie'}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
               {searchHistory.length > 0 && (
                 <section className='mb-12'>
                   <h2 className='mb-4 text-xl font-bold text-gray-800 text-left dark:text-gray-200'>
@@ -935,6 +946,40 @@ function SearchPageClient() {
                         </button>
                       </div>
                     ))}
+                  </div>
+                </section>
+              )}
+              {recommendations.length > 0 && (
+                <section className='mb-12'>
+                  <h2 className='mb-4 text-xl font-bold text-gray-800 text-left dark:text-gray-200'>为你推荐</h2>
+                  <div
+                    key='recommendations'
+                    className='justify-start grid grid-cols-3 gap-x-2 gap-y-14 sm:gap-y-20 px-0 sm:px-2 sm:grid-cols-[repeat(auto-fill,_minmax(11rem,_1fr))] sm:gap-x-8'
+                  >
+                    {recommendations.map((item) => (
+                      <div
+                        key={`rec-${item.source}-${item.id}`}
+                        className='w-full'
+                      >
+                        <VideoCard
+                          id={item.id}
+                          title={item.title}
+                          poster={item.poster}
+                          episodes={item.episodes.length}
+                          source={item.source}
+                          source_name={item.source_name}
+                          douban_id={item.douban_id}
+                          year={item.year}
+                          from='search'
+                          type={item.episodes.length > 1 ? 'tv' : 'movie'}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div ref={loadMoreRef} className='h-10 flex justify-center items-center'>
+                    {isRecommendationsLoading && (
+                      <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-green-500'></div>
+                    )}
                   </div>
                 </section>
               )}
