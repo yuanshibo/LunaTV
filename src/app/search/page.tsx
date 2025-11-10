@@ -32,13 +32,8 @@ function SearchPageClient() {
   const [isLoading, setIsLoading] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [aiResponseText, setAiResponseText] = useState<string | null>(null); // New state for AI assistant's text
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const [totalSources, setTotalSources] = useState(0);
-  const [completedSources, setCompletedSources] = useState(0);
-  const pendingResultsRef = useRef<SearchResult[]>([]);
-  const flushTimerRef = useRef<number | null>(null);
-  const [useFluidSearch, setUseFluidSearch] = useState(true);
   const [recommendations, setRecommendations] = useState<SearchResult[]>([]);
   const [recommendationPage, setRecommendationPage] = useState(1);
   const [hasMoreRecommendations, setHasMoreRecommendations] = useState(true);
@@ -389,18 +384,6 @@ function SearchPageClient() {
     // 初始加载搜索历史
     getSearchHistory().then(setSearchHistory);
 
-    // 读取流式搜索设置
-    if (typeof window !== 'undefined') {
-      const savedFluidSearch = localStorage.getItem('fluidSearch');
-      const defaultFluidSearch =
-        (window as any).RUNTIME_CONFIG?.FLUID_SEARCH !== false;
-      if (savedFluidSearch !== null) {
-        setUseFluidSearch(JSON.parse(savedFluidSearch));
-      } else if (defaultFluidSearch !== undefined) {
-        setUseFluidSearch(defaultFluidSearch);
-      }
-    }
-
     // 监听搜索历史更新事件
     const unsubscribe = subscribeToDataUpdates(
       'searchHistoryUpdated',
@@ -458,174 +441,46 @@ function SearchPageClient() {
 
     if (query) {
       setSearchQuery(query);
-      // 新搜索：关闭旧连接并清空结果
-      if (eventSourceRef.current) {
-        try { eventSourceRef.current.close(); } catch { }
-        eventSourceRef.current = null;
-      }
       setSearchResults([]);
-      setTotalSources(0);
-      setCompletedSources(0);
-      // 清理缓冲
-      pendingResultsRef.current = [];
-      if (flushTimerRef.current) {
-        clearTimeout(flushTimerRef.current);
-        flushTimerRef.current = null;
-      }
+      setAiResponseText(null);
       setIsLoading(true);
       setShowResults(true);
 
-      const trimmed = query.trim();
+      const trimmedQuery = query.trim();
 
-      // 每次搜索时重新读取设置，确保使用最新的配置
-      let currentFluidSearch = useFluidSearch;
-      if (typeof window !== 'undefined') {
-        const savedFluidSearch = localStorage.getItem('fluidSearch');
-        if (savedFluidSearch !== null) {
-          currentFluidSearch = JSON.parse(savedFluidSearch);
+      fetch('/api/ai/assistant', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: trimmedQuery }),
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (currentQueryRef.current !== trimmedQuery) return;
+
+        if (data.error) {
+          setAiResponseText(`出现错误: ${data.error}`);
+          setSearchResults([]);
         } else {
-          const defaultFluidSearch = (window as any).RUNTIME_CONFIG?.FLUID_SEARCH !== false;
-          currentFluidSearch = defaultFluidSearch;
+          setAiResponseText(data.responseText);
+          setSearchResults(data.results || []);
         }
-      }
+        setIsLoading(false);
+      })
+      .catch(error => {
+        console.error('AI Assistant API call failed:', error);
+        setAiResponseText('调用AI助理时出错，请稍后再试。');
+        setIsLoading(false);
+      });
 
-      // 如果读取的配置与当前状态不同，更新状态
-      if (currentFluidSearch !== useFluidSearch) {
-        setUseFluidSearch(currentFluidSearch);
-      }
-
-      if (currentFluidSearch) {
-        // 流式搜索：打开新的流式连接
-        const es = new EventSource(`/api/search/ws?q=${encodeURIComponent(trimmed)}`);
-        eventSourceRef.current = es;
-
-        es.onmessage = (event) => {
-          if (!event.data) return;
-          try {
-            const payload = JSON.parse(event.data);
-            if (currentQueryRef.current !== trimmed) return;
-            switch (payload.type) {
-              case 'start':
-                setTotalSources(payload.totalSources || 0);
-                setCompletedSources(0);
-                break;
-              case 'source_result': {
-                setCompletedSources((prev) => prev + 1);
-                if (Array.isArray(payload.results) && payload.results.length > 0) {
-                  // 缓冲新增结果，节流刷入，避免频繁重渲染导致闪烁
-                  const activeYearOrder = (viewMode === 'agg' ? (filterAgg.yearOrder) : (filterAll.yearOrder));
-                  const incoming: SearchResult[] =
-                    activeYearOrder === 'none'
-                      ? sortBatchForNoOrder(payload.results as SearchResult[])
-                      : (payload.results as SearchResult[]);
-                  pendingResultsRef.current.push(...incoming);
-                  if (!flushTimerRef.current) {
-                    flushTimerRef.current = window.setTimeout(() => {
-                      const toAppend = pendingResultsRef.current;
-                      pendingResultsRef.current = [];
-                      startTransition(() => {
-                        setSearchResults((prev) => prev.concat(toAppend));
-                      });
-                      flushTimerRef.current = null;
-                    }, 80);
-                  }
-                }
-                break;
-              }
-              case 'source_error':
-                setCompletedSources((prev) => prev + 1);
-                break;
-              case 'complete':
-                setCompletedSources(payload.completedSources || totalSources);
-                // 完成前确保将缓冲写入
-                if (pendingResultsRef.current.length > 0) {
-                  const toAppend = pendingResultsRef.current;
-                  pendingResultsRef.current = [];
-                  if (flushTimerRef.current) {
-                    clearTimeout(flushTimerRef.current);
-                    flushTimerRef.current = null;
-                  }
-                  startTransition(() => {
-                    setSearchResults((prev) => prev.concat(toAppend));
-                  });
-                }
-                setIsLoading(false);
-                try { es.close(); } catch { }
-                if (eventSourceRef.current === es) {
-                  eventSourceRef.current = null;
-                }
-                break;
-            }
-          } catch { }
-        };
-
-        es.onerror = () => {
-          setIsLoading(false);
-          // 错误时也清空缓冲
-          if (pendingResultsRef.current.length > 0) {
-            const toAppend = pendingResultsRef.current;
-            pendingResultsRef.current = [];
-            if (flushTimerRef.current) {
-              clearTimeout(flushTimerRef.current);
-              flushTimerRef.current = null;
-            }
-            startTransition(() => {
-              setSearchResults((prev) => prev.concat(toAppend));
-            });
-          }
-          try { es.close(); } catch { }
-          if (eventSourceRef.current === es) {
-            eventSourceRef.current = null;
-          }
-        };
-      } else {
-        // 传统搜索：使用普通接口
-        fetch(`/api/search?q=${encodeURIComponent(trimmed)}`)
-          .then(response => response.json())
-          .then(data => {
-            if (currentQueryRef.current !== trimmed) return;
-
-            if (data.results && Array.isArray(data.results)) {
-              const activeYearOrder = (viewMode === 'agg' ? (filterAgg.yearOrder) : (filterAll.yearOrder));
-              const results: SearchResult[] =
-                activeYearOrder === 'none'
-                  ? sortBatchForNoOrder(data.results as SearchResult[])
-                  : (data.results as SearchResult[]);
-
-              setSearchResults(results);
-              setTotalSources(1);
-              setCompletedSources(1);
-            }
-            setIsLoading(false);
-          })
-          .catch(() => {
-            setIsLoading(false);
-          });
-      }
       setShowSuggestions(false);
-
-      // 保存到搜索历史 (事件监听会自动更新界面)
       addSearchHistory(query);
     } else {
       setShowResults(false);
-      setShowSuggestions(false);
+      setAiResponseText(null);
     }
   }, [searchParams]);
-
-  // 组件卸载时，关闭可能存在的连接
-  useEffect(() => {
-    return () => {
-      if (eventSourceRef.current) {
-        try { eventSourceRef.current.close(); } catch { }
-        eventSourceRef.current = null;
-      }
-      if (flushTimerRef.current) {
-        clearTimeout(flushTimerRef.current);
-        flushTimerRef.current = null;
-      }
-      pendingResultsRef.current = [];
-    };
-  }, []);
 
   // 输入框内容变化时触发，显示搜索建议
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -649,17 +504,15 @@ function SearchPageClient() {
   // 搜索表单提交时触发，处理搜索逻辑
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmed = searchQuery.trim().replace(/\s+/g, ' ');
-    if (!trimmed) return;
+    const trimmedQuery = searchQuery.trim();
+    if (!trimmedQuery) return;
 
-    // 回显搜索框
-    setSearchQuery(trimmed);
-    setIsLoading(true);
-    setShowResults(true);
+    setSearchQuery(trimmedQuery);
     setShowSuggestions(false);
 
-    router.push(`/search?q=${encodeURIComponent(trimmed)}`);
-    // 其余由 searchParams 变化的 effect 处理
+    // The actual search logic is triggered by the useEffect hook watching searchParams.
+    // We just need to update the URL.
+    router.push(`/search?q=${encodeURIComponent(trimmedQuery)}`);
   };
 
   const handleSuggestionSelect = (suggestion: string) => {
@@ -751,23 +604,27 @@ function SearchPageClient() {
         <div className='max-w-[95%] mx-auto mt-12 overflow-visible'>
           {showResults ? (
             <section className='mb-12'>
-              {/* 标题 */}
+              {/* AI Assistant Response Text */}
+              {aiResponseText && (
+                <div className='mb-6'>
+                  <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap bg-gray-100 dark:bg-gray-800 p-4 rounded-lg">
+                    {aiResponseText}
+                  </p>
+                </div>
+              )}
+
+              {/* Title */}
               <div className='mb-4'>
                 <h2 className='text-xl font-bold text-gray-800 dark:text-gray-200'>
-                  {searchQuery.trim() && searchResults.length > 0 ? '搜索结果' : (recommendations.length > 0 ? '为你推荐' : '')}
-                  {totalSources > 0 && useFluidSearch && (
-                    <span className='ml-2 text-sm font-normal text-gray-500 dark:text-gray-400'>
-                      {completedSources}/{totalSources}
-                    </span>
-                  )}
-                  {isLoading && useFluidSearch && (
+                  {searchQuery.trim() && (searchResults.length > 0 || isLoading) ? '推荐结果' : (!searchQuery.trim() && recommendations.length > 0 ? '为你推荐' : '')}
+                  {isLoading && (
                     <span className='ml-2 inline-block align-middle'>
                       <span className='inline-block h-3 w-3 border-2 border-gray-300 border-t-green-500 rounded-full animate-spin'></span>
                     </span>
                   )}
                 </h2>
               </div>
-              {/* 筛选器 + 聚合开关 同行 */}
+              {/* Filter + Aggregation Switch */}
               <div className='mb-8 flex items-center justify-between gap-3'>
                 <div className='flex-1 min-w-0'>
                   {viewMode === 'agg' ? (

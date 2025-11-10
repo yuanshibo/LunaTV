@@ -8,7 +8,7 @@ import { Douban, SearchResult, User, WatchHistory } from './types';
 
 const OLLAMA_HOST_DEFAULT = 'http://localhost:11434';
 
-const AVAILABLE_SEARCH_FILTERS = {
+export const AVAILABLE_SEARCH_FILTERS = {
   movie: {
     category: ["喜剧", "爱情", "动作", "科幻", "悬疑", "犯罪", "惊悚", "冒险", "音乐", "历史", "奇幻", "恐怖", "战争", "传记", "歌舞", "武侠", "情色", "灾难", "西部", "纪录片", "短片"],
     region: ["华语", "欧美", "韩国", "日本", "中国大陆", "美国", "中国香港", "中国台湾", "英国", "法国", "德国", "意大利", "西班牙", "印度", "泰国", "俄罗斯", "加拿大", "澳大利亚", "爱尔兰", "瑞典", "巴西", "丹麦"],
@@ -22,7 +22,7 @@ const AVAILABLE_SEARCH_FILTERS = {
   }
 };
 
-async function callOllama(
+export async function callOllama(
   ollamaHost: string,
   model: string,
   prompt: string,
@@ -229,7 +229,7 @@ async function getAndFilterPlayRecords(username: string): Promise<WatchHistory[]
   return filteredRecords;
 }
 
-async function getTasteProfile(username: string): Promise<any | null> {
+export async function getTasteProfile(username: string): Promise<any | null> {
   const cacheKey = `taste_profile_user_${username}`;
   const cachedProfile = await db.get(cacheKey);
   if (cachedProfile) {
