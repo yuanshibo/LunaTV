@@ -11,6 +11,7 @@ export const runtime = 'nodejs';
 const OLLAMA_HOST_DEFAULT = 'http://localhost:11434';
 
 import { User } from '@/lib/types';
+import { directSearch } from '@/lib/search';
 
 async function getAiRecommendations(query: string, user: User) {
   const config = await getConfig(); // Ensure config is loaded
