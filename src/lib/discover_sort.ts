@@ -8,7 +8,21 @@ import { Douban, SearchResult, User, WatchHistory } from './types';
 
 const OLLAMA_HOST_DEFAULT = 'http://localhost:11434';
 
-async function callOllama(
+export const AVAILABLE_SEARCH_FILTERS = {
+  movie: {
+    category: ["喜剧", "爱情", "动作", "科幻", "悬疑", "犯罪", "惊悚", "冒险", "音乐", "历史", "奇幻", "恐怖", "战争", "传记", "歌舞", "武侠", "情色", "灾难", "西部", "纪录片", "短片"],
+    region: ["华语", "欧美", "韩国", "日本", "中国大陆", "美国", "中国香港", "中国台湾", "英国", "法国", "德国", "意大利", "西班牙", "印度", "泰国", "俄罗斯", "加拿大", "澳大利亚", "爱尔兰", "瑞典", "巴西", "丹麦"],
+    year: ["2020年代", "2025", "2024", "2023", "2022", "2021", "2020", "2019", "2010年代", "2000年代", "90年代", "80年代", "70年代", "60年代", "更早"],
+  },
+  tv: {
+    category: ["喜剧", "爱情", "悬疑", "武侠", "古装", "家庭", "犯罪", "科幻", "恐怖", "历史", "战争", "动作", "冒险", "传记", "剧情", "奇幻", "惊悚", "灾难", "歌舞", "音乐"],
+    region: ["华语", "欧美", "国外", "韩国", "日本", "中国大陆", "中国香港", "美国", "英国", "泰国", "中国台湾", "意大利", "法国", "德国", "西班牙", "俄罗斯", "瑞典", "巴西", "丹麦", "印度", "加拿大", "爱尔兰", "澳大利亚"],
+    year: ["2020年代", "2025", "2024", "2023", "2022", "2021", "2020", "2019", "2010年代", "2000年代", "90年代", "80年代", "70年代", "60年代", "更早"],
+    platform: ["腾讯视频", "爱奇艺", "优酷", "湖南卫视", "Netflix", "HBO", "BBC", "NHK", "CBS", "NBC", "tvN"],
+  }
+};
+
+export async function callOllama(
   ollamaHost: string,
   model: string,
   prompt: string,
@@ -69,8 +83,15 @@ async function explorationStage(
   const prompt = `
     The user has watched the following titles: ${titles}.
     Based on their viewing history, please generate 2-3 diverse Douban search criteria combinations to discover new content they might like.
-    The available search parameters are: "kind" (e.g., "movie", "tv"), "category" (e.g., "科幻", "悬疑", "动作"), and "label" (e.g., "高分", "经典", "冷门").
-    Return the response as a JSON object with a key "combinations", which is an array of criteria objects.
+
+    You MUST use the following available search parameters. Choose "kind" first, then pick values from the corresponding categories.
+    - "kind": "movie" or "tv".
+    - "category":
+      - For "movie": [${AVAILABLE_SEARCH_FILTERS.movie.category.join(', ')}]
+      - For "tv": [${AVAILABLE_SEARCH_FILTERS.tv.category.join(', ')}]
+    - "label": You can optionally use labels like "高分", "经典", "冷门".
+
+    Return the response as a JSON object with a key "combinations", which is an array of criteria objects. Do not invent new categories.
     Example format: {"combinations": [{ "kind": "movie", "category": "科幻", "label": "高分" }, ...]}
   `;
 
@@ -89,7 +110,7 @@ async function rankingStage(
   config: AdminConfig,
   history: WatchHistory[],
   candidates: Douban[]
-) {
+): Promise<string[]> {
   const historyTitles = history.map((h) => h.title).join(', ');
   const candidateDetails = candidates
     .map((c) => `{id: "${c.id}", title: "${c.title}", intro: "${c.intro}"}`)
@@ -103,15 +124,138 @@ async function rankingStage(
     Candidate list: [${candidateDetails}]
   `;
 
-  const sortedIds = await callOllama(
+  const aiResponse = await callOllama(
     config.SiteConfig.ollama_host || OLLAMA_HOST_DEFAULT,
     config.SiteConfig.ollama_model || 'llama3',
     prompt,
     true
   );
-  console.log('Sorted IDs from ranking:', JSON.stringify(sortedIds, null, 2));
+  console.log('Raw sorted response from ranking:', JSON.stringify(aiResponse, null, 2));
 
-  return sortedIds;
+  let sortedIds: any[] = [];
+
+  if (Array.isArray(aiResponse)) {
+    sortedIds = aiResponse;
+  } else if (typeof aiResponse === 'object' && aiResponse !== null) {
+    if (Array.isArray(aiResponse.sorted_ids)) {
+      sortedIds = aiResponse.sorted_ids;
+    } else if (Array.isArray(aiResponse.result)) {
+      sortedIds = aiResponse.result;
+    }
+  }
+
+  if (sortedIds.length > 0) {
+    // Ensure all elements are strings
+    return sortedIds.map(id => String(id));
+  }
+
+  console.error('Could not parse a valid array of IDs from AI ranking response.');
+  return [];
+}
+
+export async function generateAndCacheTasteProfile(user: User): Promise<void> {
+  const cacheKey = `taste_profile_user_${user.username}`;
+  console.log(`Attempting to generate taste profile for user: ${user.username}`);
+
+  const config = await getConfig();
+  if (!config.SiteConfig.ollama_host) {
+    console.log('Ollama host not configured, skipping taste profile generation.');
+    return;
+  }
+
+  // Use the filter to get all significant play records.
+  const allHistory = await getAndFilterPlayRecords(user.username);
+
+  if (allHistory.length < 5) {
+    console.log(`Not enough significant watch history (${allHistory.length} records) to generate a taste profile for ${user.username}.`);
+    return;
+  }
+
+  const historyDetails = allHistory
+    .map((h) => `{title: "${h.title}", year: "${h.year}"}`)
+    .join(', ');
+
+  const prompt = `
+    Analyze the following complete viewing history of a user: [${historyDetails}].
+    Based on this data, create a detailed "Taste Profile" for the user.
+    The profile should be a JSON object containing the following keys:
+    - "preferred_genres": An array of strings for their most-loved genres (e.g., "科幻", "悬疑").
+    - "favorite_themes": An array of strings for specific themes or elements they enjoy (e.g., "太空探索", "时间循环", "人工智能").
+    - "key_figures": An array of strings for directors or actors they seem to follow.
+    - "mood_preference": An array of strings describing the emotional tone of the content they watch (e.g., "紧张", "烧脑", "引人深思").
+    - "disliked_elements": An array of strings identifying potential genres or themes they avoid (infer this from patterns of absence or single, abandoned viewings if possible).
+
+    Please provide a concise and accurate analysis. Example output:
+    {
+      "preferred_genres": ["科幻", "悬疑"],
+      "favorite_themes": ["时间旅行", "反乌托邦"],
+      "key_figures": ["克里斯托弗·诺兰"],
+      "mood_preference": ["烧脑", "结局反转"],
+      "disliked_elements": ["浪漫喜剧"]
+    }
+  `;
+
+  try {
+    const tasteProfile = await callOllama(
+      config.SiteConfig.ollama_host || OLLAMA_HOST_DEFAULT,
+      config.SiteConfig.ollama_model || 'llama3',
+      prompt,
+      true
+    );
+
+    console.log(`Generated taste profile for ${user.username}:`, JSON.stringify(tasteProfile, null, 2));
+
+    // Cache the profile for 7 days.
+    await db.set(cacheKey, JSON.stringify(tasteProfile), 60 * 60 * 24 * 7);
+    console.log(`Taste profile cached for user: ${user.username}`);
+  } catch (error) {
+    console.error(`Failed to generate taste profile for ${user.username}:`, error);
+  }
+}
+
+async function getAndFilterPlayRecords(username: string): Promise<WatchHistory[]> {
+  const historyDict = await db.getAllPlayRecords(username);
+  const allRecords = Object.values(historyDict);
+
+  if (!allRecords || allRecords.length === 0) {
+    return [];
+  }
+
+  console.log(`Found ${allRecords.length} raw play records for user: ${username}. Filtering...`);
+
+  const filteredRecords = allRecords.filter(record => {
+    // For TV series (total_episodes > 1), keep if at least 1 episode has been watched (index >= 1).
+    const isSeries = record.total_episodes > 1;
+    if (isSeries) {
+      return record.index >= 1;
+    }
+
+    // For movies, keep if watch progress is >= 20%.
+    // Avoid division by zero if total_time is not available.
+    if (!record.total_time || record.total_time === 0) {
+      return false;
+    }
+    const progress = record.play_time / record.total_time;
+    return progress >= 0.2;
+  });
+
+  console.log(`Found ${filteredRecords.length} records after filtering for user: ${username}.`);
+
+  // Sort by save_time descending to have the most recent records first.
+  filteredRecords.sort((a, b) => b.save_time - a.save_time);
+
+  return filteredRecords;
+}
+
+export async function getTasteProfile(username: string): Promise<any | null> {
+  const cacheKey = `taste_profile_user_${username}`;
+  const cachedProfile = await db.get(cacheKey);
+  if (cachedProfile) {
+    console.log(`Taste profile cache hit for user: ${username}`);
+    return JSON.parse(cachedProfile as string);
+  }
+  console.log(`Taste profile cache miss for user: ${username}`);
+  return null;
 }
 
 export async function discoverSort(user: User): Promise<SearchResult[]> {
@@ -129,56 +273,139 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
     return [];
   }
 
-  const historyDict = await db.getAllPlayRecords(user.username);
-  const history = Object.values(historyDict);
-  if (!history || history.length === 0) {
+  const tasteProfile = await getTasteProfile(user.username);
+  const recentHistory = (await getAndFilterPlayRecords(user.username)).slice(0, 10);
+
+  if (recentHistory.length === 0) {
+    console.log(`No recent significant play history for ${user.username}, cannot generate recommendations.`);
     return [];
   }
 
-  // Stage 1: Exploration
-  const searchCriteria = await explorationStage(config, history);
-  console.log('Fetching candidates based on criteria...');
-  const candidatePromises = searchCriteria.map(async (criteria: { kind: 'tv' | 'movie'; category: string; label: string }) => {
-    try {
-      console.log(`Fetching hot recommends for criteria:`, criteria);
-      const result = await getDoubanRecommends(criteria);
-      console.log(`Found ${result.list.length} items for criteria:`, criteria);
-      return result.list;
-    } catch (error) {
-      console.error(`Error fetching recommendations for criteria ${JSON.stringify(criteria)}:`, error);
-      return []; // Return empty array on error
-    }
-  });
-  const results = await Promise.all(candidatePromises);
-  const candidates = Array.from(new Set(results.flat())); // Flatten and deduplicate
-  console.log(`Found ${candidates.length} unique candidates after exploration.`);
+  // --- Fallback Logic ---
+  // If no taste profile exists, revert to the old method and trigger a profile generation.
+  if (!tasteProfile) {
+    console.log(`No taste profile for ${user.username}. Using fallback recommendation logic.`);
+    // Trigger profile generation in the background, but don't wait for it.
+    generateAndCacheTasteProfile(user);
 
-  // Stage 2: Ranking
-  let sortedCandidates: Douban[];
-  try {
-    const sortedIds = await rankingStage(config, history, candidates);
-    sortedCandidates = sortedIds.map((id: string) =>
-      candidates.find((c) => c.id === id)
-    );
-  } catch (error) {
-    console.error("AI ranking stage failed, falling back to un-ranked candidates:", error);
-    sortedCandidates = candidates;
+    // Use the original two-stage logic as a fallback.
+    const searchCriteria = await explorationStage(config, recentHistory);
+    const candidatePromises = searchCriteria.map(async (criteria: { kind: 'tv' | 'movie'; category: string; label: string }) => {
+      try {
+        const result = await getDoubanRecommends(criteria);
+        return result.list;
+      } catch (error) {
+        console.error(`Fallback: Error fetching for criteria ${JSON.stringify(criteria)}:`, error);
+        return [];
+      }
+    });
+    const results = await Promise.all(candidatePromises);
+    const uniqueCandidatesMap = new Map<string, Douban>();
+    results.flat().forEach(candidate => {
+      if (candidate && candidate.title && !uniqueCandidatesMap.has(candidate.title)) {
+        uniqueCandidatesMap.set(candidate.title, candidate);
+      }
+    });
+    const candidates = Array.from(uniqueCandidatesMap.values());
+
+    let sortedCandidates: Douban[];
+    try {
+      const sortedIds = await rankingStage(config, recentHistory, candidates);
+      sortedCandidates = sortedIds.map((id: string) => candidates.find((c) => c.id === id)).filter(Boolean) as Douban[];
+    } catch (error) {
+      console.error("Fallback: AI ranking failed, returning un-ranked candidates:", error);
+      sortedCandidates = candidates;
+    }
+
+    const finalResult = sortedCandidates.map(item => ({
+      id: item.id,
+      title: item.title,
+      poster: item.poster,
+      source: 'douban',
+      source_name: '豆瓣',
+      year: item.year,
+      episodes: [],
+      episodes_titles: [],
+    })) as SearchResult[];
+
+    await db.set(cacheKey, JSON.stringify(finalResult), 60 * 60 * 24);
+    return finalResult;
   }
 
-  const finalResult = sortedCandidates.filter(Boolean).map(item => ({
-    id: item.id,
-    title: item.title,
-    poster: item.poster,
-    source: 'douban',
-    source_name: '豆瓣',
-    year: item.year,
-    episodes: [],
-    episodes_titles: [],
-  })) as SearchResult[];
-  console.log('Final AI recommendations:', JSON.stringify(finalResult, null, 2));
+  // --- New Taste Profile-based Logic ---
+  console.log(`Using taste profile to generate recommendations for ${user.username}.`);
+  const recentTitles = recentHistory.map(h => h.title).join(', ');
 
-  await db.set(cacheKey, JSON.stringify(finalResult), 60 * 60 * 24); // Cache for 1 day
-  console.log(`AI recommendations cached for user: ${user.username}`);
+  const prompt = `
+    Based on the user's comprehensive Taste Profile and their recent activity, please provide personalized recommendations.
 
-  return finalResult;
+    **User's Long-term Taste Profile:**
+    ${JSON.stringify(tasteProfile, null, 2)}
+
+    **User's Recent Watched Titles:**
+    ${recentTitles}
+
+    **Your Task:**
+    1.  Synthesize the long-term profile with their immediate interests.
+    2.  Generate a list of 2-3 diverse Douban search criteria combinations that reflect this synthesis.
+    3.  You MUST use the following available search parameters. Choose "kind" first, then pick values from the corresponding categories.
+        - "kind": "movie" or "tv".
+        - "category":
+          - For "movie": [${AVAILABLE_SEARCH_FILTERS.movie.category.join(', ')}]
+          - For "tv": [${AVAILABLE_SEARCH_FILTERS.tv.category.join(', ')}]
+        - "label": You can optionally use labels like "高分", "经典", "冷门".
+    4.  Return the response as a JSON object with a key "combinations", which is an array of criteria objects. Do not invent new categories.
+        Example format: {"combinations": [{ "kind": "movie", "category": "科幻", "label": "高分" }, ...]}
+  `;
+
+  try {
+    const criteriaResponse = await callOllama(
+      config.SiteConfig.ollama_host || OLLAMA_HOST_DEFAULT,
+      config.SiteConfig.ollama_model || 'llama3',
+      prompt,
+      true
+    );
+    const searchCriteria = criteriaResponse.combinations;
+
+    const candidatePromises = searchCriteria.map(async (criteria: { kind: 'tv' | 'movie'; category: string; label: string }) => {
+      try {
+        const result = await getDoubanRecommends(criteria);
+        return result.list;
+      } catch (error) {
+        console.error(`Error fetching recommendations for criteria ${JSON.stringify(criteria)}:`, error);
+        return [];
+      }
+    });
+    const results = await Promise.all(candidatePromises);
+    const uniqueCandidatesMap = new Map<string, Douban>();
+    results.flat().forEach(candidate => {
+      if (candidate && candidate.title && !uniqueCandidatesMap.has(candidate.title)) {
+        uniqueCandidatesMap.set(candidate.title, candidate);
+      }
+    });
+    const candidates = Array.from(uniqueCandidatesMap.values());
+    console.log(`Found ${candidates.length} unique candidates from profile-based search.`);
+
+    // Re-rank the candidates based on the profile and recent history.
+    const sortedIds = await rankingStage(config, recentHistory, candidates);
+    const sortedCandidates = sortedIds.map((id: string) => candidates.find((c) => c.id === id)).filter(Boolean) as Douban[];
+
+    const finalResult = sortedCandidates.map(item => ({
+      id: item.id,
+      title: item.title,
+      poster: item.poster,
+      source: 'douban',
+      source_name: '豆瓣',
+      year: item.year,
+      episodes: [],
+      episodes_titles: [],
+    })) as SearchResult[];
+
+    await db.set(cacheKey, JSON.stringify(finalResult), 60 * 60 * 24);
+    console.log(`AI recommendations (profile-based) cached for user: ${user.username}`);
+    return finalResult;
+  } catch (error) {
+    console.error(`Error during taste profile-based recommendation for ${user.username}:`, error);
+    return []; // Return empty on error
+  }
 }
