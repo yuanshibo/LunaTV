@@ -314,9 +314,14 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
     });
     const candidates = Array.from(uniqueCandidatesMap.values());
 
+    // Coarse-Ranking: Limit the number of candidates sent to the AI to avoid timeouts.
+    const MAX_CANDIDATES_FOR_RANKING = 20;
+    const candidatesForRanking = candidates.slice(0, MAX_CANDIDATES_FOR_RANKING);
+
+
     let sortedCandidates: Douban[];
     try {
-      const sortedIds = await rankingStage(config, recentHistory, candidates);
+      const sortedIds = await rankingStage(config, recentHistory, candidatesForRanking);
       sortedCandidates = sortedIds.map((id: string) => candidates.find((c) => c.id === id)).filter(Boolean) as Douban[];
     } catch (error) {
       console.error("Fallback: AI ranking failed, returning un-ranked candidates:", error);
@@ -392,8 +397,12 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
     const candidates = Array.from(uniqueCandidatesMap.values());
     console.log(`Found ${candidates.length} unique candidates from profile-based search.`);
 
+    // Coarse-Ranking: Limit the number of candidates sent to the AI to avoid timeouts.
+    const MAX_CANDIDATES_FOR_RANKING = 20;
+    const candidatesForRanking = candidates.slice(0, MAX_CANDIDATES_FOR_RANKING);
+
     // Re-rank the candidates based on the profile and recent history.
-    const sortedIds = await rankingStage(config, recentHistory, candidates);
+    const sortedIds = await rankingStage(config, recentHistory, candidatesForRanking);
     const sortedCandidates = sortedIds.map((id: string) => candidates.find((c) => c.id === id)).filter(Boolean) as Douban[];
 
     const finalResult = sortedCandidates.map(item => ({
