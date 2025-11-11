@@ -142,22 +142,57 @@ export async function GET(request: NextRequest) {
 
         // 检查是否所有源都已完成
         if (completedSources === apiSites.length) {
-          if (!streamClosed) {
-            // 发送最终完成事件
-            const completeEvent = `data: ${JSON.stringify({
-              type: 'complete',
-              totalResults: allResults.length,
-              completedSources,
-              timestamp: Date.now()
-            })}\n\n`;
+          if (streamClosed) return;
 
-            if (safeEnqueue(encoder.encode(completeEvent))) {
-              // 只有在成功发送完成事件后才关闭流
-              try {
-                controller.close();
-              } catch (error) {
-                console.warn('Failed to close controller:', error);
+          // If no results found, fallback to AI Assistant
+          if (allResults.length === 0) {
+            console.log('No direct results, falling back to AI Assistant within stream.');
+            try {
+              const aiResponse = await fetch('http://localhost:3000/api/ai/assistant', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Cookie': request.headers.get('cookie') || '',
+                },
+                body: JSON.stringify({ query }),
+              });
+
+              if (aiResponse.ok) {
+                const aiData = await aiResponse.json();
+                if (aiData.results && aiData.results.length > 0) {
+                  allResults.push(...aiData.results);
+                  const aiSourceEvent = `data: ${JSON.stringify({
+                    type: 'source_result',
+                    source: 'ai_assistant',
+                    sourceName: 'AI 推荐',
+                    results: aiData.results,
+                    responseText: aiData.responseText,
+                    timestamp: Date.now()
+                  })}\n\n`;
+                  if (!safeEnqueue(encoder.encode(aiSourceEvent))) {
+                    streamClosed = true;
+                    return;
+                  }
+                }
               }
+            } catch (aiError) {
+              console.error('AI assistant fallback failed:', aiError);
+            }
+          }
+
+          // 发送最终完成事件
+          const completeEvent = `data: ${JSON.stringify({
+            type: 'complete',
+            totalResults: allResults.length,
+            completedSources,
+            timestamp: Date.now()
+          })}\n\n`;
+
+          if (safeEnqueue(encoder.encode(completeEvent))) {
+            try {
+              controller.close();
+            } catch (error) {
+              console.warn('Failed to close controller:', error);
             }
           }
         }

@@ -9,6 +9,8 @@ import { yellowWords } from '@/lib/yellow';
 
 export const runtime = 'nodejs';
 
+import { directSearch } from '@/lib/search';
+
 export async function GET(request: NextRequest) {
   const authInfo = getAuthInfoFromCookie(request);
   if (!authInfo || !authInfo.username) {
@@ -17,9 +19,9 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('q');
+  const cacheTime = await getCacheTime();
 
   if (!query) {
-    const cacheTime = await getCacheTime();
     return NextResponse.json(
       { results: [] },
       {
@@ -27,59 +29,56 @@ export async function GET(request: NextRequest) {
           'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
           'CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
           'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
-          'Netlify-Vary': 'query',
         },
       }
     );
   }
 
-  const config = await getConfig();
-  const apiSites = await getAvailableApiSites(authInfo.username);
-
-  // 添加超时控制和错误处理，避免慢接口拖累整体响应
-  const searchPromises = apiSites.map((site) =>
-    Promise.race([
-      searchFromApi(site, query),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`${site.name} timeout`)), 20000)
-      ),
-    ]).catch((err) => {
-      console.warn(`搜索失败 ${site.name}:`, err.message);
-      return []; // 返回空数组而不是抛出错误
-    })
-  );
-
   try {
-    const results = await Promise.allSettled(searchPromises);
-    const successResults = results
-      .filter((result) => result.status === 'fulfilled')
-      .map((result) => (result as PromiseFulfilledResult<any>).value);
-    let flattenedResults = successResults.flat();
-    if (!config.SiteConfig.DisableYellowFilter) {
-      flattenedResults = flattenedResults.filter((result) => {
-        const typeName = result.type_name || '';
-        return !yellowWords.some((word: string) => typeName.includes(word));
-      });
-    }
-    const cacheTime = await getCacheTime();
+    let results = await directSearch(query, authInfo.username);
 
-    if (flattenedResults.length === 0) {
-      // no cache if empty
+    // If no results, fallback to AI Assistant
+    if (results.length === 0) {
+      console.log('No direct results, falling back to AI Assistant for non-streamed search.');
+      try {
+        const aiResponse = await fetch('http://localhost:3000/api/ai/assistant', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Cookie': request.headers.get('cookie') || '',
+          },
+          body: JSON.stringify({ query }),
+        });
+
+        if (aiResponse.ok) {
+          const aiData = await aiResponse.json();
+          if (aiData.results && aiData.results.length > 0) {
+            results = aiData.results;
+            // You might want to include aiData.responseText in the final response as well.
+            // For now, we'll just return the results to maintain consistency.
+          }
+        }
+      } catch (aiError) {
+        console.error('AI assistant fallback failed for non-streamed search:', aiError);
+      }
+    }
+
+    if (results.length === 0) {
       return NextResponse.json({ results: [] }, { status: 200 });
     }
 
     return NextResponse.json(
-      { results: flattenedResults },
+      { results },
       {
         headers: {
           'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
           'CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
           'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
-          'Netlify-Vary': 'query',
         },
       }
     );
   } catch (error) {
-    return NextResponse.json({ error: '搜索失败' }, { status: 500 });
+    console.error(`Error in /api/search:`, error);
+    return NextResponse.json({ error: 'Search failed' }, { status: 500 });
   }
 }
