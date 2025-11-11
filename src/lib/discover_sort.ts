@@ -176,21 +176,38 @@ export async function generateAndCacheTasteProfile(user: User): Promise<void> {
     return;
   }
 
-  // Use the filter to get all significant play records.
-  const allHistory = await getAndFilterPlayRecords(user.username);
+  // Get both significant play records and search history
+  const [watchHistory, searchHistory] = await Promise.all([
+    getAndFilterPlayRecords(user.username),
+    db.getSearchHistory(user.username),
+  ]);
 
-  if (allHistory.length < 5) {
-    console.log(`Not enough significant watch history (${allHistory.length} records) to generate a taste profile for ${user.username}.`);
+  if (watchHistory.length < 3 && searchHistory.length < 3) {
+    console.log(
+      `Not enough significant history (watch: ${watchHistory.length}, search: ${searchHistory.length}) to generate a taste profile for ${user.username}.`
+    );
     return;
   }
 
-  const historyDetails = allHistory
-    .map((h) => `{title: "${h.title}", year: "${h.year}"}`)
-    .join(', ');
+  const watchHistoryDetails =
+    watchHistory.length > 0
+      ? `Viewing History: [${watchHistory
+          .map((h) => `{title: "${h.title}", year: "${h.year}"}`)
+          .join(', ')}]`
+      : 'Viewing History: None';
+
+  const searchHistoryDetails =
+    searchHistory.length > 0
+      ? `Search History: [${searchHistory.join(', ')}]`
+      : 'Search History: None';
 
   const prompt = `
-    Analyze the following complete viewing history of a user: [${historyDetails}].
-    Based on this data, create a detailed "Taste Profile" for the user.
+    Analyze the following viewing and search history of a user. The viewing history shows what they have watched, and the search history shows what they are interested in.
+
+    ${watchHistoryDetails}
+    ${searchHistoryDetails}
+
+    Based on this combined data, create a detailed "Taste Profile" for the user.
     The profile should be a JSON object containing the following keys:
     - "preferred_genres": An array of strings for their most-loved genres (e.g., "科幻", "悬疑").
     - "favorite_themes": An array of strings for specific themes or elements they enjoy (e.g., "太空探索", "时间循环", "人工智能").
