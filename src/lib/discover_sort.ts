@@ -110,7 +110,7 @@ async function rankingStage(
   config: AdminConfig,
   history: WatchHistory[],
   candidates: Douban[]
-) {
+): Promise<string[]> {
   const historyTitles = history.map((h) => h.title).join(', ');
   const candidateDetails = candidates
     .map((c) => `{id: "${c.id}", title: "${c.title}", intro: "${c.intro}"}`)
@@ -124,15 +124,33 @@ async function rankingStage(
     Candidate list: [${candidateDetails}]
   `;
 
-  const sortedIds = await callOllama(
+  const aiResponse = await callOllama(
     config.SiteConfig.ollama_host || OLLAMA_HOST_DEFAULT,
     config.SiteConfig.ollama_model || 'llama3',
     prompt,
     true
   );
-  console.log('Sorted IDs from ranking:', JSON.stringify(sortedIds, null, 2));
+  console.log('Raw sorted response from ranking:', JSON.stringify(aiResponse, null, 2));
 
-  return sortedIds;
+  let sortedIds: any[] = [];
+
+  if (Array.isArray(aiResponse)) {
+    sortedIds = aiResponse;
+  } else if (typeof aiResponse === 'object' && aiResponse !== null) {
+    if (Array.isArray(aiResponse.sorted_ids)) {
+      sortedIds = aiResponse.sorted_ids;
+    } else if (Array.isArray(aiResponse.result)) {
+      sortedIds = aiResponse.result;
+    }
+  }
+
+  if (sortedIds.length > 0) {
+    // Ensure all elements are strings
+    return sortedIds.map(id => String(id));
+  }
+
+  console.error('Could not parse a valid array of IDs from AI ranking response.');
+  return [];
 }
 
 export async function generateAndCacheTasteProfile(user: User): Promise<void> {
@@ -293,9 +311,6 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
     let sortedCandidates: Douban[];
     try {
       const sortedIds = await rankingStage(config, recentHistory, candidates);
-      if (!Array.isArray(sortedIds)) {
-        throw new Error('AI ranking did not return a valid array of IDs.');
-      }
       sortedCandidates = sortedIds.map((id: string) => candidates.find((c) => c.id === id)).filter(Boolean) as Douban[];
     } catch (error) {
       console.error("Fallback: AI ranking failed, returning un-ranked candidates:", error);
@@ -373,9 +388,6 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
 
     // Re-rank the candidates based on the profile and recent history.
     const sortedIds = await rankingStage(config, recentHistory, candidates);
-    if (!Array.isArray(sortedIds)) {
-      throw new Error('AI ranking did not return a valid array of IDs.');
-    }
     const sortedCandidates = sortedIds.map((id: string) => candidates.find((c) => c.id === id)).filter(Boolean) as Douban[];
 
     const finalResult = sortedCandidates.map(item => ({
