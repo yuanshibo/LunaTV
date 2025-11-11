@@ -158,7 +158,7 @@ async function rankingStage(
 
   if (sortedIds.length > 0) {
     // Ensure all elements are strings and de-duplicate
-    const uniqueSortedIds = [...new Set(sortedIds.map(id => String(id)))];
+    const uniqueSortedIds = Array.from(new Set(sortedIds.map(id => String(id))));
     return uniqueSortedIds;
   }
 
