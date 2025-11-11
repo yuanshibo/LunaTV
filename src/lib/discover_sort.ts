@@ -105,21 +105,22 @@ async function explorationStage(
   return criteria.combinations;
 }
 
-// Stage 2: Ranking - Re-rank candidates based on plot summaries
+// Stage 2: Ranking - Re-rank candidates based on available data
 async function rankingStage(
   config: AdminConfig,
   history: WatchHistory[],
   candidates: Douban[]
 ): Promise<string[]> {
   const historyTitles = history.map((h) => h.title).join(', ');
+  // Use 'title' and 'year' for ranking, as 'intro' (plot summary) is not available from the API.
   const candidateDetails = candidates
-    .map((c) => `{id: "${c.id}", title: "${c.title}", intro: "${c.intro}"}`)
+    .map((c) => `{id: "${c.id}", title: "${c.title}", year: "${c.year}"}`)
     .join(', ');
   console.log('Candidates for ranking:', JSON.stringify(candidates, null, 2));
 
   const prompt = `
     A user likes the following titles: ${historyTitles}.
-    Please re-rank the following candidate list based on their likely preferences. The list is provided with titles and plot summaries.
+    Please re-rank the following candidate list based on their likely preferences. The list is provided with titles and release years.
     Return only a JSON array of the sorted IDs.
     Candidate list: [${candidateDetails}]
   `;
