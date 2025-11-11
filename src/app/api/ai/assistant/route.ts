@@ -19,7 +19,10 @@ export async function POST(request: NextRequest) {
   const config = await getConfig();
   if (!config.SiteConfig.ollama_host) {
     console.log('Ollama host not configured, skipping AI assistant.');
-    return NextResponse.json({ responseText: 'AI功能未配置，请联系管理员。', results: [] });
+    return NextResponse.json({
+      responseText: 'AI功能未配置，请联系管理员。',
+      results: [],
+    });
   }
 
   try {
@@ -28,11 +31,56 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid query' }, { status: 400 });
     }
 
-    console.log(`AI Assistant request from ${user.username} with query: "${query}"`);
+    console.log(
+      `AI Assistant request from ${user.username} with query: "${query}"`
+    );
 
+    // Step 1: Attempt direct search first
+    console.log('Attempting direct search first.');
+    const [movieResults, tvResults] = await Promise.all([
+      getDoubanRecommends({ kind: 'movie', category: query }),
+      getDoubanRecommends({ kind: 'tv', category: query }),
+    ]);
+    const combinedList = [...movieResults.list, ...tvResults.list];
+
+    const uniqueCandidatesMap = new Map<string, any>();
+    combinedList.forEach((candidate) => {
+      if (
+        candidate &&
+        candidate.title &&
+        !uniqueCandidatesMap.has(candidate.title)
+      ) {
+        uniqueCandidatesMap.set(candidate.title, candidate);
+      }
+    });
+    const candidates = Array.from(uniqueCandidatesMap.values());
+
+    if (candidates.length > 0) {
+      console.log(`Direct search found ${candidates.length} results. Returning them.`);
+      const finalResult = candidates.map((item) => ({
+        id: item.id,
+        title: item.title,
+        poster: item.poster,
+        source: 'douban',
+        source_name: '豆瓣',
+        year: item.year,
+        episodes: [],
+        episodes_titles: [],
+      })) as SearchResult[];
+
+      return NextResponse.json({
+        responseText: `以下是“${query}”的搜索结果：`,
+        results: finalResult,
+      });
+    }
+
+    // Step 2: If no results, fall back to AI assistant
+    console.log('No results from direct search. Falling back to AI assistant.');
     const tasteProfile = await getTasteProfile(user.username);
     if (!tasteProfile) {
-        console.log(`No taste profile for ${user.username}. AI assistant might have limited context.`);
+      console.log(
+        `No taste profile for ${user.username}. AI assistant might have limited context.`
+      );
     }
 
     const prompt = `
@@ -56,7 +104,9 @@ export async function POST(request: NextRequest) {
 
       **Available Search Parameters:**
       - "kind": "movie" or "tv".
-      - "category" (for movie): [${AVAILABLE_SEARCH_FILTERS.movie.category.join(', ')}]
+      - "category" (for movie): [${AVAILABLE_SEARCH_FILTERS.movie.category.join(
+        ', '
+      )}]
       - "category" (for tv): [${AVAILABLE_SEARCH_FILTERS.tv.category.join(', ')}]
       - "label": (optional) "高分", "经典", "冷门".
 
@@ -83,28 +133,41 @@ export async function POST(request: NextRequest) {
       throw new Error('Invalid response format from AI assistant.');
     }
 
-    const candidatePromises = searchCriteria.map(async (criteria: { kind: 'tv' | 'movie'; category: string; label: string }) => {
-      try {
-        const result = await getDoubanRecommends(criteria);
-        return result.list;
-      } catch (error) {
-        console.error(`AI Assistant: Error fetching for criteria ${JSON.stringify(criteria)}:`, error);
-        return [];
+    const aiCandidatePromises = searchCriteria.map(
+      async (criteria: {
+        kind: 'tv' | 'movie';
+        category: string;
+        label: string;
+      }) => {
+        try {
+          const result = await getDoubanRecommends(criteria);
+          return result.list;
+        } catch (error) {
+          console.error(
+            `AI Assistant: Error fetching for criteria ${JSON.stringify(
+              criteria
+            )}:`,
+            error
+          );
+          return [];
+        }
+      }
+    );
+
+    const aiResults = await Promise.all(aiCandidatePromises);
+    const aiUniqueCandidatesMap = new Map<string, any>();
+    aiResults.flat().forEach((candidate) => {
+      if (
+        candidate &&
+        candidate.title &&
+        !aiUniqueCandidatesMap.has(candidate.title)
+      ) {
+        aiUniqueCandidatesMap.set(candidate.title, candidate);
       }
     });
+    const aiCandidates = Array.from(aiUniqueCandidatesMap.values());
 
-    const results = await Promise.all(candidatePromises);
-    const uniqueCandidatesMap = new Map<string, any>();
-    results.flat().forEach(candidate => {
-      if (candidate && candidate.title && !uniqueCandidatesMap.has(candidate.title)) {
-        uniqueCandidatesMap.set(candidate.title, candidate);
-      }
-    });
-    const candidates = Array.from(uniqueCandidatesMap.values());
-
-    // We can optionally add a re-ranking stage here as well for better results.
-    // For simplicity, we'll return the candidates directly for now.
-    const finalResult = candidates.map(item => ({
+    const finalResult = aiCandidates.map((item) => ({
       id: item.id,
       title: item.title,
       poster: item.poster,
@@ -119,9 +182,14 @@ export async function POST(request: NextRequest) {
       responseText,
       results: finalResult,
     });
-
   } catch (error) {
-    console.error(`Error in /api/ai/assistant for user ${user.username}:`, error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    console.error(
+      `Error in /api/ai/assistant for user ${user.username}:`,
+      error
+    );
+    return NextResponse.json(
+      { error: 'Internal Server Error' },
+      { status: 500 }
+    );
   }
 }
