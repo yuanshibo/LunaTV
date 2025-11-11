@@ -225,10 +225,15 @@ async function getAndFilterPlayRecords(username: string): Promise<WatchHistory[]
   console.log(`Found ${allRecords.length} raw play records for user: ${username}. Filtering...`);
 
   const filteredRecords = allRecords.filter(record => {
-    // For TV series (total_episodes > 1), keep if at least 1 episode has been watched (index >= 1).
     const isSeries = record.total_episodes > 1;
     if (isSeries) {
-      return record.index >= 1;
+      // For TV series, keep if at least 1 episode has been watched AND watch progress is >= 10%.
+      // Avoid division by zero if total_episodes is not available.
+      if (!record.total_episodes || record.total_episodes === 0) {
+        return false;
+      }
+      const progress = record.index / record.total_episodes;
+      return record.index >= 1 && progress >= 0.1;
     }
 
     // For movies, keep if watch progress is >= 20%.
