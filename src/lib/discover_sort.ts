@@ -47,30 +47,39 @@ export async function callOllama(
     )
   );
 
-  const res = await fetch(`${ollamaHost}/api/generate`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
+  // Add a 5-minute timeout controller
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000);
 
-  if (!res.ok) {
-    throw new Error(
-      `Ollama API request failed with status ${res.status}: ${res.statusText}`
-    );
+  try {
+    const res = await fetch(`${ollamaHost}/api/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      throw new Error(
+        `Ollama API request failed with status ${res.status}: ${res.statusText}`
+      );
+    }
+
+    const data = await res.json();
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { context, ...logData } = data;
+    console.log('Ollama response:', JSON.stringify(logData, null, 2));
+
+    if (data.done === false) {
+      throw new Error('Ollama response was not complete.');
+    }
+
+    return isJson ? JSON.parse(data.response) : data.response;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  const data = await res.json();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { context, ...logData } = data;
-  console.log('Ollama response:', JSON.stringify(logData, null, 2));
-
-  if (data.done === false) {
-    throw new Error('Ollama response was not complete.');
-  }
-
-  return isJson ? JSON.parse(data.response) : data.response;
 }
 
 // Stage 1: Exploration - Generate search criteria from user history
@@ -105,22 +114,21 @@ async function explorationStage(
   return criteria.combinations;
 }
 
-// Stage 2: Ranking - Re-rank candidates based on available data
+// Stage 2: Ranking - Re-rank candidates based on plot summaries
 async function rankingStage(
   config: AdminConfig,
   history: WatchHistory[],
   candidates: Douban[]
 ): Promise<string[]> {
   const historyTitles = history.map((h) => h.title).join(', ');
-  // Use 'title' and 'year' for ranking, as 'intro' (plot summary) is not available from the API.
   const candidateDetails = candidates
-    .map((c) => `{id: "${c.id}", title: "${c.title}", year: "${c.year}"}`)
+    .map((c) => `{id: "${c.id}", title: "${c.title}", intro: "${c.intro}"}`)
     .join(', ');
   console.log('Candidates for ranking:', JSON.stringify(candidates, null, 2));
 
   const prompt = `
     A user likes the following titles: ${historyTitles}.
-    Please re-rank the following candidate list based on their likely preferences. The list is provided with titles and release years.
+    Please re-rank the following candidate list based on their likely preferences. The list is provided with titles and plot summaries.
     Return only a JSON array of the sorted IDs.
     Candidate list: [${candidateDetails}]
   `;
@@ -225,15 +233,10 @@ async function getAndFilterPlayRecords(username: string): Promise<WatchHistory[]
   console.log(`Found ${allRecords.length} raw play records for user: ${username}. Filtering...`);
 
   const filteredRecords = allRecords.filter(record => {
+    // For TV series (total_episodes > 1), keep if at least 1 episode has been watched (index >= 1).
     const isSeries = record.total_episodes > 1;
     if (isSeries) {
-      // For TV series, keep if at least 1 episode has been watched AND watch progress is >= 10%.
-      // Avoid division by zero if total_episodes is not available.
-      if (!record.total_episodes || record.total_episodes === 0) {
-        return false;
-      }
-      const progress = record.index / record.total_episodes;
-      return record.index >= 1 && progress >= 0.1;
+      return record.index >= 1;
     }
 
     // For movies, keep if watch progress is >= 20%.
@@ -315,9 +318,8 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
     const candidates = Array.from(uniqueCandidatesMap.values());
 
     // Coarse-Ranking: Limit the number of candidates sent to the AI to avoid timeouts.
-    const MAX_CANDIDATES_FOR_RANKING = 20;
+    const MAX_CANDIDATES_FOR_RANKING = 50;
     const candidatesForRanking = candidates.slice(0, MAX_CANDIDATES_FOR_RANKING);
-
 
     let sortedCandidates: Douban[];
     try {
@@ -398,7 +400,7 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
     console.log(`Found ${candidates.length} unique candidates from profile-based search.`);
 
     // Coarse-Ranking: Limit the number of candidates sent to the AI to avoid timeouts.
-    const MAX_CANDIDATES_FOR_RANKING = 20;
+    const MAX_CANDIDATES_FOR_RANKING = 50;
     const candidatesForRanking = candidates.slice(0, MAX_CANDIDATES_FOR_RANKING);
 
     // Re-rank the candidates based on the profile and recent history.
