@@ -386,8 +386,11 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
     const candidates = Array.from(uniqueCandidatesMap.values());
     console.log(`Found ${candidates.length} unique candidates from profile-based search.`);
 
+    // Coarse-ranking: Truncate the list to a manageable size for the AI.
+    const fineTuningCandidates = candidates.slice(0, 50);
+
     // Re-rank the candidates based on the profile and recent history.
-    const sortedIds = await rankingStage(config, recentHistory, candidates);
+    const sortedIds = await rankingStage(config, recentHistory, fineTuningCandidates);
     const sortedCandidates = sortedIds.map((id: string) => candidates.find((c) => c.id === id)).filter(Boolean) as Douban[];
 
     const finalResult = sortedCandidates.map(item => ({
