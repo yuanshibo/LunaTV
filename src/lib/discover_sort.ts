@@ -297,7 +297,7 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
   const tasteProfile = await getTasteProfile(user.username);
   const { validRecords: allValidHistory } = await getAndFilterPlayRecords(user.username);
   const recentHistory = allValidHistory.slice(0, 10);
-  const watchedIds = new Set(allValidHistory.map(record => record.douban_id).filter(Boolean));
+  const watchedTitlesAndYears = new Set(allValidHistory.map(record => `${record.title}-${record.year}`));
 
 
   if (recentHistory.length === 0) {
@@ -328,7 +328,8 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
     const results = await Promise.all(candidatePromises);
     const uniqueCandidatesMap = new Map<string, Douban>();
     results.flat().forEach(candidate => {
-      if (candidate && candidate.title && !uniqueCandidatesMap.has(candidate.title) && !watchedIds.has(candidate.id)) {
+      const candidateKey = `${candidate.title}-${candidate.year}`;
+      if (candidate && candidate.title && !uniqueCandidatesMap.has(candidate.title) && !watchedTitlesAndYears.has(candidateKey)) {
         uniqueCandidatesMap.set(candidate.title, candidate);
       }
     });
@@ -407,7 +408,8 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
     const results = await Promise.all(candidatePromises);
     const uniqueCandidatesMap = new Map<string, Douban>();
     results.flat().forEach(candidate => {
-      if (candidate && candidate.title && !uniqueCandidatesMap.has(candidate.title) && !watchedIds.has(candidate.id)) {
+      const candidateKey = `${candidate.title}-${candidate.year}`;
+      if (candidate && candidate.title && !uniqueCandidatesMap.has(candidate.title) && !watchedTitlesAndYears.has(candidateKey)) {
         uniqueCandidatesMap.set(candidate.title, candidate);
       }
     });
