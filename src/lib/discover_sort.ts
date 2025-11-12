@@ -164,6 +164,7 @@ export async function generateAndCacheTasteProfile(user: User): Promise<void> {
   }
 
   const { validRecords, abandonedRecords } = await getAndFilterPlayRecords(user.username);
+  const searchHistory = await db.getSearchHistory(user.username);
 
   if (validRecords.length < 5) {
     console.log(`Not enough significant watch history (${validRecords.length} records) to generate a taste profile for ${user.username}.`);
@@ -178,8 +179,10 @@ export async function generateAndCacheTasteProfile(user: User): Promise<void> {
     .map((h) => `{title: "${h.title}", year: "${h.year}"}`)
     .join(', ');
 
+  const searchHistoryDetails = searchHistory.join(', ');
+
   const prompt = `
-    Analyze the following viewing history of a user. It is separated into titles they watched significantly ("watched_titles") and titles they started but quickly abandoned ("abandoned_titles").
+    Analyze the following user data to create a detailed "Taste Profile". The data includes titles they watched significantly ("watched_titles"), titles they quickly abandoned ("abandoned_titles"), and their recent search history ("search_history").
 
     **Watched Titles (Positive Preference):**
     [${validHistoryDetails}]
@@ -187,13 +190,18 @@ export async function generateAndCacheTasteProfile(user: User): Promise<void> {
     **Abandoned Titles (Negative Preference):**
     [${abandonedHistoryDetails}]
 
-    Based on this data, create a detailed "Taste Profile" for the user.
+    **Search History (Keywords of Interest):**
+    [${searchHistoryDetails}]
+
+    Based on all of this data, create a detailed "Taste Profile" for the user.
     The profile should be a JSON object containing the following keys:
     - "preferred_genres": An array of strings for their most-loved genres.
     - "favorite_themes": An array of strings for specific themes or elements they enjoy.
     - "key_figures": An array of strings for directors or actors they seem to follow.
     - "mood_preference": An array of strings describing the emotional tone of the content they watch.
     - "disliked_elements": An array of strings identifying potential genres or themes they avoid. **Use the "abandoned_titles" as a strong signal for what to include here.**
+
+    Synthesize information from the viewing and search history to create a comprehensive profile. For example, if they search for "诺兰", you can infer an interest in that director.
 
     Please provide a concise and accurate analysis. Example output:
     {
