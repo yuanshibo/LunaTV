@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromRequest } from '@/lib/auth';
 import { getConfig } from '@/lib/config';
-import { callOllama, getTasteProfile, AVAILABLE_SEARCH_FILTERS } from '@/lib/discover_sort';
-import { getDoubanRecommends } from '@/lib/douban.server';
-import { directSearch } from '@/lib/search'; // 导入 directSearch
+import {
+  callOllama,
+  getTasteProfile,
+  AVAILABLE_SEARCH_FILTERS,
+  fetchAndProcessCandidates,
+  SearchCriterion,
+} from '@/lib/discover_sort';
+import { db } from '@/lib/db'; // Import db to get watch history
+import { directSearch } from '@/lib/search';
 import { SearchResult } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -88,42 +94,22 @@ export async function POST(request: NextRequest) {
     );
 
     // We only need searchCriteria from the AI now
-    const { searchCriteria } = aiResponse;
+    const { searchCriteria } = aiResponse as { searchCriteria: SearchCriterion[] };
 
     if (!searchCriteria || !Array.isArray(searchCriteria)) {
       throw new Error('Invalid response format from AI assistant: missing searchCriteria.');
     }
 
-    const candidatePromises = searchCriteria.map(async (criteria: { kind: 'tv' | 'movie'; category: string; label: string }) => {
-      try {
-        const result = await getDoubanRecommends(criteria);
-        return result.list;
-      } catch (error) {
-        console.error(`AI Assistant: Error fetching for criteria ${JSON.stringify(criteria)}:`, error);
-        return [];
-      }
-    });
+    // Get user's watch history to filter out content they've already seen.
+    const allPlayRecords = await db.getAllPlayRecords(user.username);
+    const watchedTitlesAndYears = new Set(
+      Object.values(allPlayRecords).map(record => `${record.title}-${record.year}`)
+    );
 
-    const results = await Promise.all(candidatePromises);
-    const uniqueCandidatesMap = new Map<string, any>();
-    results.flat().forEach(candidate => {
-      if (candidate && candidate.title && !uniqueCandidatesMap.has(candidate.title)) {
-        uniqueCandidatesMap.set(candidate.title, candidate);
-      }
-    });
-    const candidates = Array.from(uniqueCandidatesMap.values());
+    // Use the unified core function to fetch, process, and sort candidates.
+    const finalResult = await fetchAndProcessCandidates(searchCriteria, watchedTitlesAndYears);
 
-    const finalResult = candidates.map(item => ({
-      id: item.id,
-      title: item.title,
-      poster: item.poster,
-      source: 'douban',
-      source_name: '豆瓣',
-      year: item.year,
-      episodes: [],
-      episodes_titles: [],
-    })) as SearchResult[];
-
+    console.log(`AI search fallback for "${query}" found ${finalResult.length} results.`);
     // Return in the unified format
     return NextResponse.json({
       results: finalResult,
