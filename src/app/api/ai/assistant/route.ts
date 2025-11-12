@@ -52,9 +52,7 @@ export async function POST(request: NextRequest) {
     }
 
     const prompt = `
-      You are a helpful and friendly AI assistant for a media streaming app.
-      A user has a long-term "Taste Profile" and has just made a specific query.
-      Your task is to synthesize this information to provide a helpful, conversational response and a precise set of search criteria.
+      You are an expert AI assistant for a media streaming app. Your sole task is to generate a precise set of Douban search criteria based on a user's taste profile and their current query.
 
       **User's Long-term Taste Profile:**
       ${JSON.stringify(tasteProfile, null, 2)}
@@ -64,11 +62,10 @@ export async function POST(request: NextRequest) {
 
       **Instructions:**
       1.  **Analyze and Synthesize:** Interpret the user's query in the context of their taste profile.
-      2.  **Generate Conversational Response:** Create a short, friendly, and natural text response (in Chinese) that acknowledges their request and explains what you're recommending.
-      3.  **Generate Search Criteria:** Based on your synthesis, create a list of 1-2 diverse Douban search criteria combinations.
+      2.  **Generate Search Criteria:** Based on your synthesis, create a list of 1-2 diverse Douban search criteria combinations.
           - You MUST use the available search parameters provided below.
           - Do not invent new categories or values.
-      4.  **Format Output:** Return a single JSON object with two keys: "responseText" and "searchCriteria". "searchCriteria" should be an array of objects.
+      3.  **Format Output:** Return a single JSON object with a single key: "searchCriteria". This key should contain an array of criteria objects. Do not include any other keys or conversational text.
 
       **Available Search Parameters:**
       - "kind": "movie" or "tv".
@@ -78,7 +75,6 @@ export async function POST(request: NextRequest) {
 
       **Example Output:**
       {
-        "responseText": "当然！如果您喜欢赛博朋克和深度思考，这几部电影可能会是您的菜：",
         "searchCriteria": [
           { "kind": "movie", "category": "科幻", "label": "经典" },
           { "kind": "movie", "category": "悬疑" }
