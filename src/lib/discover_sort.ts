@@ -163,27 +163,37 @@ export async function generateAndCacheTasteProfile(user: User): Promise<void> {
     return;
   }
 
-  // Use the filter to get all significant play records.
-  const allHistory = await getAndFilterPlayRecords(user.username);
+  const { validRecords, abandonedRecords } = await getAndFilterPlayRecords(user.username);
 
-  if (allHistory.length < 5) {
-    console.log(`Not enough significant watch history (${allHistory.length} records) to generate a taste profile for ${user.username}.`);
+  if (validRecords.length < 5) {
+    console.log(`Not enough significant watch history (${validRecords.length} records) to generate a taste profile for ${user.username}.`);
     return;
   }
 
-  const historyDetails = allHistory
+  const validHistoryDetails = validRecords
+    .map((h) => `{title: "${h.title}", year: "${h.year}"}`)
+    .join(', ');
+
+  const abandonedHistoryDetails = abandonedRecords
     .map((h) => `{title: "${h.title}", year: "${h.year}"}`)
     .join(', ');
 
   const prompt = `
-    Analyze the following complete viewing history of a user: [${historyDetails}].
+    Analyze the following viewing history of a user. It is separated into titles they watched significantly ("watched_titles") and titles they started but quickly abandoned ("abandoned_titles").
+
+    **Watched Titles (Positive Preference):**
+    [${validHistoryDetails}]
+
+    **Abandoned Titles (Negative Preference):**
+    [${abandonedHistoryDetails}]
+
     Based on this data, create a detailed "Taste Profile" for the user.
     The profile should be a JSON object containing the following keys:
-    - "preferred_genres": An array of strings for their most-loved genres (e.g., "科幻", "悬疑").
-    - "favorite_themes": An array of strings for specific themes or elements they enjoy (e.g., "太空探索", "时间循环", "人工智能").
+    - "preferred_genres": An array of strings for their most-loved genres.
+    - "favorite_themes": An array of strings for specific themes or elements they enjoy.
     - "key_figures": An array of strings for directors or actors they seem to follow.
-    - "mood_preference": An array of strings describing the emotional tone of the content they watch (e.g., "紧张", "烧脑", "引人深思").
-    - "disliked_elements": An array of strings identifying potential genres or themes they avoid (infer this from patterns of absence or single, abandoned viewings if possible).
+    - "mood_preference": An array of strings describing the emotional tone of the content they watch.
+    - "disliked_elements": An array of strings identifying potential genres or themes they avoid. **Use the "abandoned_titles" as a strong signal for what to include here.**
 
     Please provide a concise and accurate analysis. Example output:
     {
@@ -213,38 +223,49 @@ export async function generateAndCacheTasteProfile(user: User): Promise<void> {
   }
 }
 
-async function getAndFilterPlayRecords(username: string): Promise<WatchHistory[]> {
+async function getAndFilterPlayRecords(username: string): Promise<{ validRecords: WatchHistory[], abandonedRecords: WatchHistory[] }> {
   const historyDict = await db.getAllPlayRecords(username);
   const allRecords = Object.values(historyDict);
 
   if (!allRecords || allRecords.length === 0) {
-    return [];
+    return { validRecords: [], abandonedRecords: [] };
   }
 
   console.log(`Found ${allRecords.length} raw play records for user: ${username}. Filtering...`);
 
-  const filteredRecords = allRecords.filter(record => {
-    // For TV series (total_episodes > 1), keep if at least 1 episode has been watched (index >= 1).
+  const validRecords: WatchHistory[] = [];
+  const abandonedRecords: WatchHistory[] = [];
+
+  allRecords.forEach(record => {
     const isSeries = record.total_episodes > 1;
     if (isSeries) {
-      return record.index >= 1;
+      if (record.index >= 1) {
+        validRecords.push(record);
+      } else {
+        abandonedRecords.push(record);
+      }
+    } else {
+      if (!record.total_time || record.total_time === 0) {
+        // Cannot determine progress, treat as abandoned
+        abandonedRecords.push(record);
+        return;
+      }
+      const progress = record.play_time / record.total_time;
+      if (progress >= 0.2) {
+        validRecords.push(record);
+      } else {
+        abandonedRecords.push(record);
+      }
     }
-
-    // For movies, keep if watch progress is >= 20%.
-    // Avoid division by zero if total_time is not available.
-    if (!record.total_time || record.total_time === 0) {
-      return false;
-    }
-    const progress = record.play_time / record.total_time;
-    return progress >= 0.2;
   });
 
-  console.log(`Found ${filteredRecords.length} records after filtering for user: ${username}.`);
+  console.log(`Found ${validRecords.length} valid and ${abandonedRecords.length} abandoned records after filtering for user: ${username}.`);
 
-  // Sort by save_time descending to have the most recent records first.
-  filteredRecords.sort((a, b) => b.save_time - a.save_time);
+  // Sort both arrays by save_time descending
+  validRecords.sort((a, b) => b.save_time - a.save_time);
+  abandonedRecords.sort((a, b) => b.save_time - a.save_time);
 
-  return filteredRecords;
+  return { validRecords, abandonedRecords };
 }
 
 export async function getTasteProfile(username: string): Promise<any | null> {
@@ -274,7 +295,10 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
   }
 
   const tasteProfile = await getTasteProfile(user.username);
-  const recentHistory = (await getAndFilterPlayRecords(user.username)).slice(0, 10);
+  const { validRecords: allValidHistory } = await getAndFilterPlayRecords(user.username);
+  const recentHistory = allValidHistory.slice(0, 10);
+  const watchedIds = new Set(allValidHistory.map(record => record.douban_id).filter(Boolean));
+
 
   if (recentHistory.length === 0) {
     console.log(`No recent significant play history for ${user.username}, cannot generate recommendations.`);
@@ -292,7 +316,9 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
     const searchCriteria = await explorationStage(config, recentHistory);
     const candidatePromises = searchCriteria.map(async (criteria: { kind: 'tv' | 'movie'; category: string; label: string }) => {
       try {
-        const result = await getDoubanRecommends(criteria);
+        // Diversify source by fetching from a random page within the first 10 pages
+        const randomPageStart = Math.floor(Math.random() * 10) * 20;
+        const result = await getDoubanRecommends({ ...criteria, pageStart: randomPageStart });
         return result.list;
       } catch (error) {
         console.error(`Fallback: Error fetching for criteria ${JSON.stringify(criteria)}:`, error);
@@ -302,19 +328,20 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
     const results = await Promise.all(candidatePromises);
     const uniqueCandidatesMap = new Map<string, Douban>();
     results.flat().forEach(candidate => {
-      if (candidate && candidate.title && !uniqueCandidatesMap.has(candidate.title)) {
+      if (candidate && candidate.title && !uniqueCandidatesMap.has(candidate.title) && !watchedIds.has(candidate.id)) {
         uniqueCandidatesMap.set(candidate.title, candidate);
       }
     });
     const candidates = Array.from(uniqueCandidatesMap.values());
+    const fineTuningCandidates = candidates.slice(0, 50);
 
     let sortedCandidates: Douban[];
     try {
-      const sortedIds = await rankingStage(config, recentHistory, candidates);
+      const sortedIds = await rankingStage(config, recentHistory, fineTuningCandidates);
       sortedCandidates = sortedIds.map((id: string) => candidates.find((c) => c.id === id)).filter(Boolean) as Douban[];
     } catch (error) {
       console.error("Fallback: AI ranking failed, returning un-ranked candidates:", error);
-      sortedCandidates = candidates;
+      sortedCandidates = fineTuningCandidates; // Return the truncated list if ranking fails
     }
 
     const finalResult = sortedCandidates.map(item => ({
@@ -369,7 +396,8 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
 
     const candidatePromises = searchCriteria.map(async (criteria: { kind: 'tv' | 'movie'; category: string; label: string }) => {
       try {
-        const result = await getDoubanRecommends(criteria);
+        const randomPageStart = Math.floor(Math.random() * 10) * 20;
+        const result = await getDoubanRecommends({ ...criteria, pageStart: randomPageStart });
         return result.list;
       } catch (error) {
         console.error(`Error fetching recommendations for criteria ${JSON.stringify(criteria)}:`, error);
@@ -379,12 +407,12 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
     const results = await Promise.all(candidatePromises);
     const uniqueCandidatesMap = new Map<string, Douban>();
     results.flat().forEach(candidate => {
-      if (candidate && candidate.title && !uniqueCandidatesMap.has(candidate.title)) {
+      if (candidate && candidate.title && !uniqueCandidatesMap.has(candidate.title) && !watchedIds.has(candidate.id)) {
         uniqueCandidatesMap.set(candidate.title, candidate);
       }
     });
     const candidates = Array.from(uniqueCandidatesMap.values());
-    console.log(`Found ${candidates.length} unique candidates from profile-based search.`);
+    console.log(`Found ${candidates.length} unique, unwatched candidates from profile-based search.`);
 
     // Coarse-ranking: Truncate the list to a manageable size for the AI.
     const fineTuningCandidates = candidates.slice(0, 50);
