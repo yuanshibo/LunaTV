@@ -118,6 +118,7 @@ export interface DoubanResult {
   code: number;
   message: string;
   list: DoubanItem[];
+  total?: number;
 }
 
 // 跳过片头片尾配置数据结构
