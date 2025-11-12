@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-
 import { getUserFromRequest } from '@/lib/auth';
 import { getConfig } from '@/lib/config';
 import { callOllama, getTasteProfile, AVAILABLE_SEARCH_FILTERS } from '@/lib/discover_sort';
 import { getDoubanRecommends } from '@/lib/douban.server';
+import { directSearch } from '@/lib/search'; // 导入 directSearch
 import { SearchResult } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -16,20 +16,30 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const { query } = await request.json();
+  if (!query || typeof query !== 'string') {
+    return NextResponse.json({ error: 'Invalid query' }, { status: 400 });
+  }
+
+  // --- Step 1: Direct Search ---
+  console.log(`Unified search for "${query}" from ${user.username}. Starting with direct search.`);
+  const directSearchResults = await directSearch(query, user.username);
+
+  if (directSearchResults.length > 0) {
+    console.log(`Direct search found ${directSearchResults.length} results for "${query}". Returning immediately.`);
+    return NextResponse.json({ results: directSearchResults });
+  }
+
+  // --- Step 2: AI Fallback ---
+  console.log(`Direct search found no results for "${query}". Falling back to AI assistant.`);
   const config = await getConfig();
   if (!config.SiteConfig.ollama_host) {
     console.log('Ollama host not configured, skipping AI assistant.');
-    return NextResponse.json({ responseText: 'AI功能未配置，请联系管理员。', results: [] });
+    // Return the standard empty result format
+    return NextResponse.json({ results: [] });
   }
 
   try {
-    const { query } = await request.json();
-    if (!query || typeof query !== 'string') {
-      return NextResponse.json({ error: 'Invalid query' }, { status: 400 });
-    }
-
-    console.log(`AI Assistant request from ${user.username} with query: "${query}"`);
-
     const tasteProfile = await getTasteProfile(user.username);
     if (!tasteProfile) {
         console.log(`No taste profile for ${user.username}. AI assistant might have limited context.`);
@@ -77,10 +87,11 @@ export async function POST(request: NextRequest) {
       true
     );
 
-    const { responseText, searchCriteria } = aiResponse;
+    // We only need searchCriteria from the AI now
+    const { searchCriteria } = aiResponse;
 
-    if (!responseText || !searchCriteria || !Array.isArray(searchCriteria)) {
-      throw new Error('Invalid response format from AI assistant.');
+    if (!searchCriteria || !Array.isArray(searchCriteria)) {
+      throw new Error('Invalid response format from AI assistant: missing searchCriteria.');
     }
 
     const candidatePromises = searchCriteria.map(async (criteria: { kind: 'tv' | 'movie'; category: string; label: string }) => {
@@ -102,8 +113,6 @@ export async function POST(request: NextRequest) {
     });
     const candidates = Array.from(uniqueCandidatesMap.values());
 
-    // We can optionally add a re-ranking stage here as well for better results.
-    // For simplicity, we'll return the candidates directly for now.
     const finalResult = candidates.map(item => ({
       id: item.id,
       title: item.title,
@@ -115,13 +124,13 @@ export async function POST(request: NextRequest) {
       episodes_titles: [],
     })) as SearchResult[];
 
+    // Return in the unified format
     return NextResponse.json({
-      responseText,
       results: finalResult,
     });
 
   } catch (error) {
-    console.error(`Error in /api/ai/assistant for user ${user.username}:`, error);
+    console.error(`Error in /api/ai/assistant fallback for user ${user.username}:`, error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
