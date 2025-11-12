@@ -32,7 +32,6 @@ function SearchPageClient() {
   const [isLoading, setIsLoading] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [aiResponseText, setAiResponseText] = useState<string | null>(null); // New state for AI assistant's text
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [recommendations, setRecommendations] = useState<SearchResult[]>([]);
   const [recommendationPage, setRecommendationPage] = useState(1);
@@ -442,7 +441,6 @@ function SearchPageClient() {
     if (query) {
       setSearchQuery(query);
       setSearchResults([]);
-      setAiResponseText(null);
       setIsLoading(true);
       setShowResults(true);
 
@@ -460,17 +458,15 @@ function SearchPageClient() {
         if (currentQueryRef.current !== trimmedQuery) return;
 
         if (data.error) {
-          setAiResponseText(`出现错误: ${data.error}`);
+          console.error('Search API error:', data.error);
           setSearchResults([]);
         } else {
-          setAiResponseText(data.responseText);
           setSearchResults(data.results || []);
         }
         setIsLoading(false);
       })
       .catch(error => {
-        console.error('AI Assistant API call failed:', error);
-        setAiResponseText('调用AI助理时出错，请稍后再试。');
+        console.error('Search API call failed:', error);
         setIsLoading(false);
       });
 
@@ -478,7 +474,6 @@ function SearchPageClient() {
       addSearchHistory(query);
     } else {
       setShowResults(false);
-      setAiResponseText(null);
     }
   }, [searchParams]);
 
@@ -604,15 +599,6 @@ function SearchPageClient() {
         <div className='max-w-[95%] mx-auto mt-12 overflow-visible'>
           {showResults ? (
             <section className='mb-12'>
-              {/* AI Assistant Response Text */}
-              {aiResponseText && (
-                <div className='mb-6'>
-                  <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap bg-gray-100 dark:bg-gray-800 p-4 rounded-lg">
-                    {aiResponseText}
-                  </p>
-                </div>
-              )}
-
               {/* Title */}
               <div className='mb-4'>
                 <h2 className='text-xl font-bold text-gray-800 dark:text-gray-200'>

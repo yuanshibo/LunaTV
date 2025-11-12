@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-
 import { getUserFromRequest } from '@/lib/auth';
 import { getConfig } from '@/lib/config';
-import { callOllama, getTasteProfile, AVAILABLE_SEARCH_FILTERS } from '@/lib/discover_sort';
-import { getDoubanRecommends } from '@/lib/douban.server';
+import {
+  callOllama,
+  getTasteProfile,
+  AVAILABLE_SEARCH_FILTERS,
+  fetchAndProcessCandidates,
+  SearchCriterion,
+} from '@/lib/discover_sort';
+import { db } from '@/lib/db'; // Import db to get watch history
+import { directSearch } from '@/lib/search';
 import { SearchResult } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -16,29 +22,37 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const { query } = await request.json();
+  if (!query || typeof query !== 'string') {
+    return NextResponse.json({ error: 'Invalid query' }, { status: 400 });
+  }
+
+  // --- Step 1: Direct Search ---
+  console.log(`Unified search for "${query}" from ${user.username}. Starting with direct search.`);
+  const directSearchResults = await directSearch(query, user.username);
+
+  if (directSearchResults.length > 0) {
+    console.log(`Direct search found ${directSearchResults.length} results for "${query}". Returning immediately.`);
+    return NextResponse.json({ results: directSearchResults });
+  }
+
+  // --- Step 2: AI Fallback ---
+  console.log(`Direct search found no results for "${query}". Falling back to AI assistant.`);
   const config = await getConfig();
   if (!config.SiteConfig.ollama_host) {
     console.log('Ollama host not configured, skipping AI assistant.');
-    return NextResponse.json({ responseText: 'AI功能未配置，请联系管理员。', results: [] });
+    // Return the standard empty result format
+    return NextResponse.json({ results: [] });
   }
 
   try {
-    const { query } = await request.json();
-    if (!query || typeof query !== 'string') {
-      return NextResponse.json({ error: 'Invalid query' }, { status: 400 });
-    }
-
-    console.log(`AI Assistant request from ${user.username} with query: "${query}"`);
-
     const tasteProfile = await getTasteProfile(user.username);
     if (!tasteProfile) {
         console.log(`No taste profile for ${user.username}. AI assistant might have limited context.`);
     }
 
     const prompt = `
-      You are a helpful and friendly AI assistant for a media streaming app.
-      A user has a long-term "Taste Profile" and has just made a specific query.
-      Your task is to synthesize this information to provide a helpful, conversational response and a precise set of search criteria.
+      You are an expert AI assistant for a media streaming app. Your sole task is to generate a precise set of Douban search criteria based on a user's taste profile and their current query.
 
       **User's Long-term Taste Profile:**
       ${JSON.stringify(tasteProfile, null, 2)}
@@ -48,11 +62,10 @@ export async function POST(request: NextRequest) {
 
       **Instructions:**
       1.  **Analyze and Synthesize:** Interpret the user's query in the context of their taste profile.
-      2.  **Generate Conversational Response:** Create a short, friendly, and natural text response (in Chinese) that acknowledges their request and explains what you're recommending.
-      3.  **Generate Search Criteria:** Based on your synthesis, create a list of 1-2 diverse Douban search criteria combinations.
+      2.  **Generate Search Criteria:** Based on your synthesis, create a list of 1-2 diverse Douban search criteria combinations.
           - You MUST use the available search parameters provided below.
           - Do not invent new categories or values.
-      4.  **Format Output:** Return a single JSON object with two keys: "responseText" and "searchCriteria". "searchCriteria" should be an array of objects.
+      3.  **Format Output:** Return a single JSON object with a single key: "searchCriteria". This key should contain an array of criteria objects. Do not include any other keys or conversational text.
 
       **Available Search Parameters:**
       - "kind": "movie" or "tv".
@@ -62,7 +75,6 @@ export async function POST(request: NextRequest) {
 
       **Example Output:**
       {
-        "responseText": "当然！如果您喜欢赛博朋克和深度思考，这几部电影可能会是您的菜：",
         "searchCriteria": [
           { "kind": "movie", "category": "科幻", "label": "经典" },
           { "kind": "movie", "category": "悬疑" }
@@ -77,51 +89,30 @@ export async function POST(request: NextRequest) {
       true
     );
 
-    const { responseText, searchCriteria } = aiResponse;
+    // We only need searchCriteria from the AI now
+    const { searchCriteria } = aiResponse as { searchCriteria: SearchCriterion[] };
 
-    if (!responseText || !searchCriteria || !Array.isArray(searchCriteria)) {
-      throw new Error('Invalid response format from AI assistant.');
+    if (!searchCriteria || !Array.isArray(searchCriteria)) {
+      throw new Error('Invalid response format from AI assistant: missing searchCriteria.');
     }
 
-    const candidatePromises = searchCriteria.map(async (criteria: { kind: 'tv' | 'movie'; category: string; label: string }) => {
-      try {
-        const result = await getDoubanRecommends(criteria);
-        return result.list;
-      } catch (error) {
-        console.error(`AI Assistant: Error fetching for criteria ${JSON.stringify(criteria)}:`, error);
-        return [];
-      }
-    });
+    // Get user's watch history to filter out content they've already seen.
+    const allPlayRecords = await db.getAllPlayRecords(user.username);
+    const watchedTitlesAndYears = new Set(
+      Object.values(allPlayRecords).map(record => `${record.title}-${record.year}`)
+    );
 
-    const results = await Promise.all(candidatePromises);
-    const uniqueCandidatesMap = new Map<string, any>();
-    results.flat().forEach(candidate => {
-      if (candidate && candidate.title && !uniqueCandidatesMap.has(candidate.title)) {
-        uniqueCandidatesMap.set(candidate.title, candidate);
-      }
-    });
-    const candidates = Array.from(uniqueCandidatesMap.values());
+    // Use the unified core function to fetch, process, and sort candidates.
+    const finalResult = await fetchAndProcessCandidates(searchCriteria, watchedTitlesAndYears);
 
-    // We can optionally add a re-ranking stage here as well for better results.
-    // For simplicity, we'll return the candidates directly for now.
-    const finalResult = candidates.map(item => ({
-      id: item.id,
-      title: item.title,
-      poster: item.poster,
-      source: 'douban',
-      source_name: '豆瓣',
-      year: item.year,
-      episodes: [],
-      episodes_titles: [],
-    })) as SearchResult[];
-
+    console.log(`AI search fallback for "${query}" found ${finalResult.length} results.`);
+    // Return in the unified format
     return NextResponse.json({
-      responseText,
       results: finalResult,
     });
 
   } catch (error) {
-    console.error(`Error in /api/ai/assistant for user ${user.username}:`, error);
+    console.error(`Error in /api/ai/assistant fallback for user ${user.username}:`, error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
