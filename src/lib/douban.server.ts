@@ -212,6 +212,7 @@ export async function fetchDoubanRecommends(
       code: 200,
       message: '获取成功',
       list: list,
+      total: doubanData.total,
     };
   } catch (error) {
     throw new Error(`获取豆瓣推荐数据失败: ${(error as Error).message}`);

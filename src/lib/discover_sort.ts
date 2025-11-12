@@ -226,15 +226,34 @@ export async function fetchAndProcessCandidates(
   watchedTitlesAndYears: Set<string>
 ): Promise<SearchResult[]> {
   const candidatePromises = searchCriteria.map(async (criteria) => {
+    const candidatesForCriterion: Douban[] = [];
     try {
-      // Retain the random page logic for diversity
-      const randomPageStart = Math.floor(Math.random() * 10) * 20;
-      const result = await getDoubanRecommends({ ...criteria, pageStart: randomPageStart });
-      return result.list; // result.list is of type Douban[]
-    } catch (error)      {
+      // Step 1: Fetch the first page to get the total count and initial data.
+      const firstPageResult = await getDoubanRecommends({ ...criteria, pageStart: 0, pageLimit: 20 });
+      if (firstPageResult && firstPageResult.list) {
+        candidatesForCriterion.push(...firstPageResult.list);
+      }
+
+      const total = firstPageResult.total ?? 0;
+      const pageSize = 20;
+
+      // Step 2: If there's more than one page, fetch a random subsequent page for diversity.
+      if (total > pageSize) {
+        const maxPages = Math.ceil(total / pageSize);
+        // We fetch from the second page onwards, so random page is between 1 and maxPages-1
+        const randomPage = Math.floor(Math.random() * (maxPages - 1)) + 1;
+        const randomPageStart = randomPage * pageSize;
+
+        const secondPageResult = await getDoubanRecommends({ ...criteria, pageStart: randomPageStart, pageLimit: pageSize });
+        if (secondPageResult && secondPageResult.list) {
+          candidatesForCriterion.push(...secondPageResult.list);
+        }
+      }
+    } catch (error) {
       console.error(`Error fetching recommendations for criteria ${JSON.stringify(criteria)}:`, error);
-      return [];
+      // Return whatever was gathered, even if partial, or an empty array on total failure.
     }
+    return candidatesForCriterion;
   });
 
   const results = await Promise.all(candidatePromises);
