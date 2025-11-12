@@ -441,41 +441,63 @@ function SearchPageClient() {
     if (query) {
       setSearchQuery(query);
       setSearchResults([]);
-      setAiResponseText(null);
       setIsLoading(true);
       setShowResults(true);
 
       const trimmedQuery = query.trim();
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${wsProtocol}//${window.location.host}/api/search/ws`;
+      const ws = new WebSocket(wsUrl);
 
-      fetch('/api/ai/assistant', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ query: trimmedQuery }),
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (currentQueryRef.current !== trimmedQuery) return;
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ query: trimmedQuery }));
+      };
+
+      ws.onmessage = (event) => {
+        if (currentQueryRef.current !== trimmedQuery) {
+          ws.close();
+          return;
+        }
+
+        const data = JSON.parse(event.data);
 
         if (data.error) {
-          console.error('AI Assistant API Error:', data.error);
-          setSearchResults([]);
-        } else {
-          setSearchResults(data.results || []);
+          console.error('WebSocket Error:', data.error);
+          setIsLoading(false);
+          ws.close();
+          return;
         }
+
+        if (data.event === 'batch') {
+          startTransition(() => {
+            setSearchResults((prev) => {
+              const sortedBatch = sortBatchForNoOrder(data.results);
+              return [...prev, ...sortedBatch];
+            });
+          });
+        } else if (data.event === 'done') {
+          setIsLoading(false);
+          ws.close();
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket Error:', error);
         setIsLoading(false);
-      })
-      .catch(error => {
-        console.error('AI Assistant API call failed:', error);
+      };
+
+      ws.onclose = () => {
         setIsLoading(false);
-      });
+      };
 
       setShowSuggestions(false);
       addSearchHistory(query);
+
+      return () => {
+        ws.close();
+      };
     } else {
       setShowResults(false);
-      setAiResponseText(null);
     }
   }, [searchParams]);
 
