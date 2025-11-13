@@ -41,6 +41,9 @@ export async function POST(request: NextRequest) {
       FluidSearch,
       ollama_host,
       ollama_model,
+      aiProvider,
+      geminiApiKey,
+      gemini_model,
     } = body as {
       SiteName: string;
       Announcement: string;
@@ -54,6 +57,9 @@ export async function POST(request: NextRequest) {
       FluidSearch: boolean;
       ollama_host: string;
       ollama_model: string;
+      aiProvider: 'ollama' | 'gemini';
+      geminiApiKey: string;
+      gemini_model: string;
     };
 
     // 参数校验
@@ -100,6 +106,9 @@ export async function POST(request: NextRequest) {
       FluidSearch,
       ollama_host,
       ollama_model,
+      aiProvider,
+      geminiApiKey,
+      gemini_model,
     };
 
     // 写入数据库
