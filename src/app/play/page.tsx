@@ -1219,6 +1219,7 @@ function PlayPageClient() {
           total_episodes: detailRef.current?.episodes.length || 1,
           save_time: Date.now(),
           search_title: searchTitle,
+          description: detailRef.current?.desc,
         });
         setFavorited(true);
       }
