@@ -91,12 +91,24 @@ export async function generateAndCacheTasteProfile(user: User): Promise<void> {
     return;
   }
 
+  const sanitizeForPrompt = (str: string | undefined | null) => {
+    if (!str) return '';
+    // Replace characters that could break the prompt structure, like double quotes.
+    return str.replace(/"/g, "'").replace(/\n/g, ' ').trim();
+  };
+
   const validHistoryDetails = validRecords
-    .map((h) => `{title: "${h.title}", year: "${h.year}"}`)
+    .map((h) => {
+      const desc = sanitizeForPrompt(h.description);
+      return `{title: "${sanitizeForPrompt(h.title)}", year: "${h.year}", description: "${desc}"}`;
+    })
     .join(', ');
 
   const abandonedHistoryDetails = abandonedRecords
-    .map((h) => `{title: "${h.title}", year: "${h.year}"}`)
+    .map((h) => {
+      const desc = sanitizeForPrompt(h.description);
+      return `{title: "${sanitizeForPrompt(h.title)}", year: "${h.year}", description: "${desc}"}`;
+    })
     .join(', ');
 
   const searchHistoryDetails = searchHistory.join(', ');
@@ -105,23 +117,27 @@ export async function generateAndCacheTasteProfile(user: User): Promise<void> {
     Analyze the following user data to create a detailed "Taste Profile". The data includes titles they watched significantly ("watched_titles"), titles they quickly abandoned ("abandoned_titles"), and their recent search history ("search_history").
 
     **Watched Titles (Positive Preference):**
+    Each item includes a title, year, and a brief "description" (synopsis).
     [${validHistoryDetails}]
 
     **Abandoned Titles (Negative Preference):**
+    Each item includes a title, year, and a brief "description" (synopsis).
     [${abandonedHistoryDetails}]
 
     **Search History (Keywords of Interest):**
     [${searchHistoryDetails}]
 
-    Based on all of this data, create a detailed "Taste Profile" for the user.
+    Based on ALL of this data, create a detailed "Taste Profile" for the user.
+    **Pay special attention to the "description" field**, as it provides deep insights into the plot, themes, and style the user prefers or dislikes.
+
     The profile should be a JSON object containing the following keys:
     - "preferred_genres": An array of strings for their most-loved genres.
-    - "favorite_themes": An array of strings for specific themes or elements they enjoy.
+    - "favorite_themes": An array of strings for specific themes, plot elements, or character archetypes they enjoy (e.g., "time travel", "dystopian societies", "complex anti-heroes"). **Derive this heavily from the descriptions.**
     - "key_figures": An array of strings for directors or actors they seem to follow.
-    - "mood_preference": An array of strings describing the emotional tone of the content they watch.
-    - "disliked_elements": An array of strings identifying potential genres or themes they avoid. **Use the "abandoned_titles" as a strong signal for what to include here.**
+    - "mood_preference": An array of strings describing the emotional tone of the content they watch (e.g., "thought-provoking", "suspenseful", "uplifting").
+    - "disliked_elements": An array of strings identifying potential genres or themes they avoid. **Use the "abandoned_titles" and their descriptions as a strong signal for what to include here.**
 
-    Synthesize information from the viewing and search history to create a comprehensive profile. For example, if they search for "诺兰", you can infer an interest in that director.
+    Synthesize information from the viewing history, descriptions, and search history to create a comprehensive profile.
 
     Please provide a concise and accurate analysis. Example output:
     {
