@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, no-console */
 
 import {
-  GoogleGenerativeAI,
+  GoogleGenAI,
   GenerationConfig,
   Content,
 } from '@google/genai';
@@ -18,8 +18,8 @@ export async function generateContentWithGemini(
   }
 
   try {
-    // 初始化 GoogleGenerativeAI 实例
-    const genAI = new GoogleGenerativeAI(apiKey);
+    // 初始化 GoogleGenAI 实例
+    const genAI = new GoogleGenAI(apiKey);
 
     // 获取指定的生成模型
     const model = genAI.getGenerativeModel({ model: modelName });
