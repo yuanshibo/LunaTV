@@ -3395,6 +3395,9 @@ const SiteConfigComponent = ({ config, refreshConfig }: { config: AdminConfig | 
     FluidSearch: true,
     ollama_host: '',
     ollama_model: '',
+    ai_provider: 'ollama',
+    gemini_api_key: '',
+    gemini_model: '',
   });
 
   // 豆瓣数据源相关状态
@@ -3459,6 +3462,9 @@ const SiteConfigComponent = ({ config, refreshConfig }: { config: AdminConfig | 
         FluidSearch: config.SiteConfig.FluidSearch || true,
         ollama_host: config.SiteConfig.ollama_host || '',
         ollama_model: config.SiteConfig.ollama_model || '',
+        ai_provider: config.SiteConfig.ai_provider || 'ollama',
+        gemini_api_key: config.SiteConfig.gemini_api_key || '',
+        gemini_model: config.SiteConfig.gemini_model || '',
       });
     }
   }, [config]);
@@ -3916,32 +3922,85 @@ const SiteConfigComponent = ({ config, refreshConfig }: { config: AdminConfig | 
         <h3 className='text-md font-semibold text-gray-800 dark:text-gray-200 mb-4'>AI 推荐配置</h3>
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Ollama Host
+            AI 提供商
           </label>
-          <input
-            type='text'
-            value={siteSettings.ollama_host}
+          <select
+            value={siteSettings.ai_provider}
             onChange={(e) =>
-              setSiteSettings((prev) => ({ ...prev, ollama_host: e.target.value }))
+              setSiteSettings((prev) => ({ ...prev, ai_provider: e.target.value }))
             }
-            placeholder='例如: http://127.0.0.1:11434'
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-green-500 focus:border-transparent"
-          />
+          >
+            <option value="ollama">Ollama</option>
+            <option value="gemini">Google Gemini</option>
+          </select>
         </div>
-        <div className='mt-4'>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Ollama Model
-          </label>
-          <input
-            type='text'
-            value={siteSettings.ollama_model}
-            onChange={(e) =>
-              setSiteSettings((prev) => ({ ...prev, ollama_model: e.target.value }))
-            }
-            placeholder='例如: llama3'
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-green-500 focus:border-transparent"
-          />
-        </div>
+
+        {siteSettings.ai_provider === 'ollama' && (
+          <>
+            <div className='mt-4'>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Ollama Host
+              </label>
+              <input
+                type='text'
+                value={siteSettings.ollama_host}
+                onChange={(e) =>
+                  setSiteSettings((prev) => ({ ...prev, ollama_host: e.target.value }))
+                }
+                placeholder='例如: http://127.0.0.1:11434'
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              />
+            </div>
+            <div className='mt-4'>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Ollama Model
+              </label>
+              <input
+                type='text'
+                value={siteSettings.ollama_model}
+                onChange={(e) =>
+                  setSiteSettings((prev) => ({ ...prev, ollama_model: e.target.value }))
+                }
+                placeholder='例如: llama3'
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              />
+            </div>
+          </>
+        )}
+
+        {siteSettings.ai_provider === 'gemini' && (
+          <>
+            <div className='mt-4'>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Gemini API Key
+              </label>
+              <input
+                type='password'
+                value={siteSettings.gemini_api_key}
+                onChange={(e) =>
+                  setSiteSettings((prev) => ({ ...prev, gemini_api_key: e.target.value }))
+                }
+                placeholder='请输入你的 Gemini API Key'
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              />
+            </div>
+            <div className='mt-4'>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Gemini Model
+              </label>
+              <input
+                type='text'
+                value={siteSettings.gemini_model}
+                onChange={(e) =>
+                  setSiteSettings((prev) => ({ ...prev, gemini_model: e.target.value }))
+                }
+                placeholder='例如: gemini-pro'
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              />
+            </div>
+          </>
+        )}
       </div>
 
 

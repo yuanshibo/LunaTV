@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromRequest } from '@/lib/auth';
 import { getConfig } from '@/lib/config';
 import {
-  callOllama,
   getTasteProfile,
   AVAILABLE_SEARCH_FILTERS,
+  callAI,
   fetchAndProcessCandidates,
   SearchCriterion,
 } from '@/lib/discover_sort';
@@ -39,9 +39,10 @@ export async function POST(request: NextRequest) {
   // --- Step 2: AI Fallback ---
   console.log(`Direct search found no results for "${query}". Falling back to AI assistant.`);
   const config = await getConfig();
-  if (!config.SiteConfig.ollama_host) {
-    console.log('Ollama host not configured, skipping AI assistant.');
-    // Return the standard empty result format
+  const provider = config.SiteConfig.ai_provider;
+
+  if (!provider || (provider === 'ollama' && !config.SiteConfig.ollama_host) || (provider === 'gemini' && !config.SiteConfig.gemini_api_key)) {
+    console.log('AI provider not configured, skipping AI assistant.');
     return NextResponse.json({ results: [] });
   }
 
@@ -107,12 +108,7 @@ export async function POST(request: NextRequest) {
       }
     `;
 
-    const aiResponse = await callOllama(
-      config.SiteConfig.ollama_host || OLLAMA_HOST_DEFAULT,
-      config.SiteConfig.ollama_model || 'llama3',
-      prompt,
-      true
-    );
+    const aiResponse = await callAI(prompt, true);
 
     const { searchCriteria } = aiResponse as { searchCriteria: SearchCriterion[] };
 

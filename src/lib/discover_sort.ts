@@ -4,6 +4,7 @@ import { AdminConfig } from './admin.types';
 import { getConfig } from './config';
 import { db } from './db';
 import { getDoubanRecommends } from './douban.server';
+import { generateContentWithGemini } from './gemini';
 import { Douban, SearchResult, User, WatchHistory } from './types';
 
 const OLLAMA_HOST_DEFAULT = 'http://localhost:11434';
@@ -22,55 +23,53 @@ export const AVAILABLE_SEARCH_FILTERS = {
   }
 };
 
-export async function callOllama(
-  ollamaHost: string,
-  model: string,
-  prompt: string,
-  isJson = false
-) {
-  const body = {
-    model: model,
-    prompt: prompt,
-    stream: false,
-    ...(isJson ? { format: 'json' } : {}),
-  };
-  console.log(
-    'Ollama request:',
-    JSON.stringify(
-      {
-        model: body.model,
-        prompt: body.prompt,
-        format: body.format,
-      },
-      null,
-      2
-    )
-  );
+export async function callAI(prompt: string, isJson = false): Promise<any> {
+  const config = await getConfig();
+  const provider = config.SiteConfig.ai_provider || 'ollama';
 
-  const res = await fetch(`${ollamaHost}/api/generate`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
+  if (provider === 'gemini') {
+    const apiKey = config.SiteConfig.gemini_api_key;
+    const modelName = config.SiteConfig.gemini_model || 'gemini-pro';
+    if (!apiKey) {
+      throw new Error('Gemini API key is not configured.');
+    }
+    const result = await generateContentWithGemini(apiKey, modelName, prompt);
+    return isJson ? JSON.parse(result) : result;
+  } else {
+    // Default to Ollama
+    const ollamaHost = config.SiteConfig.ollama_host || OLLAMA_HOST_DEFAULT;
+    const modelName = config.SiteConfig.ollama_model || 'llama3';
 
-  if (!res.ok) {
-    throw new Error(
-      `Ollama API request failed with status ${res.status}: ${res.statusText}`
-    );
+    const body = {
+      model: modelName,
+      prompt: prompt,
+      stream: false,
+      ...(isJson ? { format: 'json' } : {}),
+    };
+
+    console.log('Ollama request:', JSON.stringify({ model: body.model, prompt: body.prompt, format: body.format }, null, 2));
+
+    const res = await fetch(`${ollamaHost}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Ollama API request failed with status ${res.status}: ${res.statusText}`);
+    }
+
+    const data = await res.json();
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { context, ...logData } = data;
+    console.log('Ollama response:', JSON.stringify(logData, null, 2));
+
+    if (data.done === false) {
+      throw new Error('Ollama response was not complete.');
+    }
+
+    return isJson ? JSON.parse(data.response) : data.response;
   }
-
-  const data = await res.json();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { context, ...logData } = data;
-  console.log('Ollama response:', JSON.stringify(logData, null, 2));
-
-  if (data.done === false) {
-    throw new Error('Ollama response was not complete.');
-  }
-
-  return isJson ? JSON.parse(data.response) : data.response;
 }
 
 export async function generateAndCacheTasteProfile(user: User): Promise<void> {
@@ -78,8 +77,10 @@ export async function generateAndCacheTasteProfile(user: User): Promise<void> {
   console.log(`Attempting to generate taste profile for user: ${user.username}`);
 
   const config = await getConfig();
-  if (!config.SiteConfig.ollama_host) {
-    console.log('Ollama host not configured, skipping taste profile generation.');
+  const provider = config.SiteConfig.ai_provider;
+
+  if (!provider || (provider === 'ollama' && !config.SiteConfig.ollama_host) || (provider === 'gemini' && !config.SiteConfig.gemini_api_key)) {
+    console.log('AI provider not configured, skipping taste profile generation.');
     return;
   }
 
@@ -151,12 +152,7 @@ export async function generateAndCacheTasteProfile(user: User): Promise<void> {
   `;
 
   try {
-    const tasteProfile = await callOllama(
-      config.SiteConfig.ollama_host || OLLAMA_HOST_DEFAULT,
-      config.SiteConfig.ollama_model || 'llama3',
-      prompt,
-      true
-    );
+    const tasteProfile = await callAI(prompt, true);
 
     console.log(`Generated taste profile for ${user.username}:`, JSON.stringify(tasteProfile, null, 2));
 
@@ -318,8 +314,10 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
   console.log(`AI recommendations cache miss for user: ${user.username}`);
 
   const config = await getConfig();
-  if (!config.SiteConfig.ollama_host) {
-    console.log('Ollama host not configured, skipping AI sort.');
+  const provider = config.SiteConfig.ai_provider;
+
+  if (!provider || (provider === 'ollama' && !config.SiteConfig.ollama_host) || (provider === 'gemini' && !config.SiteConfig.gemini_api_key)) {
+    console.log('AI provider not configured, skipping AI sort.');
     return [];
   }
 
@@ -396,12 +394,7 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
   `;
 
   try {
-    const criteriaResponse = await callOllama(
-      config.SiteConfig.ollama_host || OLLAMA_HOST_DEFAULT,
-      config.SiteConfig.ollama_model || 'llama3',
-      prompt,
-      true
-    );
+    const criteriaResponse = await callAI(prompt, true);
     const searchCriteria = criteriaResponse.combinations as SearchCriterion[];
 
     if (!searchCriteria || !Array.isArray(searchCriteria)) {
