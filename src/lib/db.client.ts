@@ -51,6 +51,7 @@ export interface Favorite {
   total_episodes: number;
   save_time: number;
   search_title?: string;
+  description?: string;
   origin?: 'vod' | 'live';
 }
 

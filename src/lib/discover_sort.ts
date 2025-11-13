@@ -39,9 +39,11 @@ export async function generateAndCacheTasteProfile(user: User): Promise<void> {
 
   const { validRecords, abandonedRecords } = await getAndFilterPlayRecords(user.username);
   const searchHistory = await db.getSearchHistory(user.username);
+  const favoritesDict = await db.getAllFavorites(user.username);
+  const favorites = Object.values(favoritesDict);
 
-  if (validRecords.length < 5) {
-    console.log(`Not enough significant watch history (${validRecords.length} records) to generate a taste profile for ${user.username}.`);
+  if (validRecords.length < 5 && favorites.length < 3) {
+    console.log(`Not enough significant watch history (${validRecords.length} records) and favorites (${favorites.length}) to generate a taste profile for ${user.username}.`);
     return;
   }
 
@@ -65,10 +67,22 @@ export async function generateAndCacheTasteProfile(user: User): Promise<void> {
     })
     .join(', ');
 
+  const favoriteDetails = favorites
+    .map((fav) => {
+      const desc = sanitizeForPrompt(fav.description);
+      return `{title: "${sanitizeForPrompt(fav.title)}", year: "${fav.year}", description: "${desc}"}`;
+    })
+    .join(', ');
+
   const searchHistoryDetails = searchHistory.join(', ');
 
   const prompt = `
-    Analyze the following user data to create a detailed "Taste Profile". The data includes titles they watched significantly ("watched_titles"), titles they quickly abandoned ("abandoned_titles"), and their recent search history ("search_history").
+    Analyze the following user data to create a detailed "Taste Profile". This data includes "favorited_titles" (which represent the STRONGEST preference signal), titles they watched significantly ("watched_titles"), titles they quickly abandoned ("abandoned_titles"), and their recent search history.
+
+    **Favorited Titles (Strongest Preference):**
+    These are items the user explicitly marked as favorites. Give them the highest weight in your analysis.
+    Each item includes a title, year, and a brief "description" (synopsis).
+    [${favoriteDetails}]
 
     **Watched Titles (Positive Preference):**
     Each item includes a title, year, and a brief "description" (synopsis).
