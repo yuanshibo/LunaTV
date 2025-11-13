@@ -129,6 +129,7 @@ export async function generateAndCacheTasteProfile(user: User): Promise<void> {
 
     Based on ALL of this data, create a detailed "Taste Profile" for the user.
     **Pay special attention to the "description" field**, as it provides deep insights into the plot, themes, and style the user prefers or dislikes.
+    **Note that the title lists are sorted by recency**, with the first items being the most recently watched. Give more weight to these recent items to better capture the user's current interests.
 
     The profile should be a JSON object containing the following keys:
     - "preferred_genres": An array of strings for their most-loved genres.
@@ -349,7 +350,7 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
     : `The user has no long-term profile. Please infer their taste from their recent activity.`;
 
   const prompt = `
-    You are an expert movie and TV show recommender. Your goal is to generate a diverse and personalized set of Douban search criteria for a user.
+    You are an expert movie and TV show recommender. Your goal is to generate a diverse, personalized, and creative set of Douban search criteria for a user.
 
     ${tasteProfilePrompt}
 
@@ -357,9 +358,28 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
     ${recentTitles}
 
     **Your Task:**
-    1.  Synthesize the user's long-term profile (if available) with their immediate interests from recent activity.
-    2.  Generate a list of 2-3 diverse Douban search criteria combinations that reflect this synthesis.
-    3.  You MUST use the following available search parameters and their exact values. Do not invent new categories, regions, or labels.
+    Synthesize the user's long-term profile with their recent activity to generate exactly THREE search criteria combinations, each with a distinct purpose, to provide a well-rounded recommendation experience.
+
+    **Instructions for Each Combination:**
+
+    1.  **Combination 1: Core Interest Match**
+        - Analyze the user's strongest and most consistent preferences from their taste profile.
+        - Generate a specific and precise search criterion that directly caters to this core interest.
+        - **Example:** If the user loves "悬疑" and "科幻", don't just search for "科幻". Instead, create a more targeted criterion like \`{ "kind": "movie", "category": "悬疑", "label": "高分" }\` that also aligns with their preference for highly-rated content.
+
+    2.  **Combination 2: Adjacent Exploration**
+        - Identify a genre or theme that is related to the user's core interest but they haven't explored much.
+        - Generate a criterion that gently pushes their boundaries.
+        - **Example:** If the user loves modern "美国" "科幻" films, suggest a classic \`{ "kind": "movie", "category": "科幻", "region": "日本", "year": "90年代" }\` to introduce them to a different style of the same genre.
+
+    3.  **Combination 3: Surprise Niche (Wildcard)**
+        - Look for an interesting, less obvious connection in their profile or history.
+        - Generate a creative, "cold start" criterion for a niche genre or theme they might unexpectedly enjoy.
+        - **Example:** If a user watches many "犯罪" dramas that often feature complex legal battles, you might infer an interest in courtroom dramas and suggest a \`{ "kind": "movie", "category": "剧情", "label": "经典" }\` and hint that it's a courtroom-focused film.
+
+    **Output Format:**
+    - You MUST use the available search parameters and their exact values listed below.
+    - Return a single JSON object with a key "combinations", which is an array containing exactly THREE criteria objects, following the logic above.
 
     **Available Search Parameters:**
     - "kind": "movie" or "tv".
@@ -372,8 +392,7 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
     - "platform" for "tv": [${AVAILABLE_SEARCH_FILTERS.tv.platform.join(', ')}]
     - "label": You can optionally use "高分", "经典", "冷门".
 
-    4.  Return the response as a JSON object with a key "combinations", which is an array of criteria objects.
-        Example format: {"combinations": [{ "kind": "movie", "category": "科幻", "region": "美国", "label": "高分" }, ...]}
+    Example format: {"combinations": [{...}, {...}, {...}]}
   `;
 
   try {
