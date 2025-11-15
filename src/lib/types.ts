@@ -12,6 +12,7 @@ export interface PlayRecord {
   total_time: number; // 总进度（秒）
   save_time: number; // 记录保存时间（时间戳）
   search_title: string; // 搜索时使用的标题
+  description?: string;
 }
 
 // 收藏数据结构
@@ -23,6 +24,7 @@ export interface Favorite {
   cover: string;
   save_time: number; // 记录保存时间（时间戳）
   search_title: string; // 搜索时使用的标题
+  description?: string;
   origin?: 'vod' | 'live';
 }
 
@@ -83,6 +85,10 @@ export interface IStorage {
 
   // 数据清理相关
   clearAllData(): Promise<void>;
+
+  // Generic key-value store
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string, ttl?: number): Promise<void>;
 }
 
 // 搜索结果数据结构
@@ -114,6 +120,7 @@ export interface DoubanResult {
   code: number;
   message: string;
   list: DoubanItem[];
+  total?: number;
 }
 
 // 跳过片头片尾配置数据结构
@@ -122,3 +129,13 @@ export interface SkipConfig {
   intro_time: number; // 片头时间（秒）
   outro_time: number; // 片尾时间（秒）
 }
+
+export interface User {
+  username: string;
+}
+
+export type WatchHistory = PlayRecord;
+
+export type Douban = DoubanItem & {
+  intro?: string;
+};

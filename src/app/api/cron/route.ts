@@ -1,13 +1,13 @@
 /* eslint-disable no-console,@typescript-eslint/no-explicit-any */
 
-import * as crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getConfig, refineConfig } from '@/lib/config';
 import { db } from '@/lib/db';
+import { discoverSort } from '@/lib/discover_sort';
 import { fetchVideoDetail } from '@/lib/fetchVideoDetail';
 import { refreshLiveChannels } from '@/lib/live';
-import { SearchResult } from '@/lib/types';
+import { SearchResult, User } from '@/lib/types';
 
 export const runtime = 'nodejs';
 
@@ -42,6 +42,24 @@ async function cronJob() {
   await refreshConfig();
   await refreshAllLiveChannels();
   await refreshRecordAndFavorites();
+  await refreshAIDiscover();
+}
+
+async function refreshAIDiscover() {
+  try {
+    const config = await getConfig();
+    const users = config.UserConfig.Users;
+    for (const user of users) {
+      try {
+        // We are not using the result directly, just warming up the cache
+        await discoverSort(user);
+      } catch (error) {
+        // a single user failing should not stop the whole job
+      }
+    }
+  } catch (error) {
+    // if getting all users fails, we can't do anything
+  }
 }
 
 async function refreshAllLiveChannels() {
@@ -109,7 +127,8 @@ async function refreshConfig() {
 
 async function refreshRecordAndFavorites() {
   try {
-    const users = await db.getAllUsers();
+    const config = await getConfig();
+    const users = config.UserConfig.Users.map(u => u.username);
     if (process.env.USERNAME && !users.includes(process.env.USERNAME)) {
       users.push(process.env.USERNAME);
     }

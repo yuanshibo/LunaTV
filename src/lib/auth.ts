@@ -6,6 +6,7 @@ export function getAuthInfoFromCookie(request: NextRequest): {
   username?: string;
   signature?: string;
   timestamp?: number;
+  role?: 'owner' | 'admin' | 'user';
 } | null {
   const authCookie = request.cookies.get('auth');
 
@@ -69,4 +70,15 @@ export function getAuthInfoFromBrowserCookie(): {
   } catch (error) {
     return null;
   }
+}
+
+export function getUserFromRequest(request: NextRequest) {
+  const authInfo = getAuthInfoFromCookie(request);
+  if (!authInfo || !authInfo.username) {
+    return null;
+  }
+  return {
+    username: authInfo.username,
+    role: authInfo.role,
+  };
 }

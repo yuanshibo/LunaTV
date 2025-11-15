@@ -33,12 +33,12 @@ function SearchPageClient() {
   const [showResults, setShowResults] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const [totalSources, setTotalSources] = useState(0);
-  const [completedSources, setCompletedSources] = useState(0);
-  const pendingResultsRef = useRef<SearchResult[]>([]);
-  const flushTimerRef = useRef<number | null>(null);
-  const [useFluidSearch, setUseFluidSearch] = useState(true);
+  const [recommendations, setRecommendations] = useState<SearchResult[]>([]);
+  const [recommendationPage, setRecommendationPage] = useState(1);
+  const [hasMoreRecommendations, setHasMoreRecommendations] = useState(true);
+  const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false);
+  const loadMoreRef = useRef(null);
+
   // 聚合卡片 refs 与聚合统计缓存
   const groupRefs = useRef<Map<string, React.RefObject<VideoCardHandle>>>(new Map());
   const groupStatsRef = useRef<Map<string, { douban_id?: number; episodes?: number; source_names: string[] }>>(new Map());
@@ -335,24 +335,53 @@ function SearchPageClient() {
     });
   }, [aggregatedResults, filterAgg, searchQuery]);
 
+  const fetchRecommendations = async (page: number) => {
+    if (isRecommendationsLoading || !hasMoreRecommendations) return;
+
+    setIsRecommendationsLoading(true);
+    try {
+      const response = await fetch(`/api/discover?page=${page}&limit=25`);
+      const data = await response.json();
+      if (data.results && data.results.length > 0) {
+        setRecommendations((prev) => [...prev, ...data.results]);
+        setRecommendationPage(page + 1);
+      }
+      setHasMoreRecommendations(data.hasMore);
+    } catch (error) {
+      console.error('Failed to fetch recommendations:', error);
+    } finally {
+      setIsRecommendationsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          fetchRecommendations(recommendationPage);
+        }
+      },
+      { threshold: 1.0 }
+    );
+
+    if (loadMoreRef.current) {
+      observer.observe(loadMoreRef.current);
+    }
+
+    return () => {
+      if (loadMoreRef.current) {
+        observer.unobserve(loadMoreRef.current);
+      }
+    };
+  }, [recommendationPage, hasMoreRecommendations, isRecommendationsLoading]);
+
+
   useEffect(() => {
     // 无搜索参数时聚焦搜索框
     !searchParams.get('q') && document.getElementById('searchInput')?.focus();
 
     // 初始加载搜索历史
     getSearchHistory().then(setSearchHistory);
-
-    // 读取流式搜索设置
-    if (typeof window !== 'undefined') {
-      const savedFluidSearch = localStorage.getItem('fluidSearch');
-      const defaultFluidSearch =
-        (window as any).RUNTIME_CONFIG?.FLUID_SEARCH !== false;
-      if (savedFluidSearch !== null) {
-        setUseFluidSearch(JSON.parse(savedFluidSearch));
-      } else if (defaultFluidSearch !== undefined) {
-        setUseFluidSearch(defaultFluidSearch);
-      }
-    }
 
     // 监听搜索历史更新事件
     const unsubscribe = subscribeToDataUpdates(
@@ -391,6 +420,10 @@ function SearchPageClient() {
 
     document.body.addEventListener('scroll', handleScroll, { passive: true });
 
+    if (!searchParams.get('q')) {
+      fetchRecommendations(1);
+    }
+
     return () => {
       unsubscribe();
       isRunning = false; // 停止 requestAnimationFrame 循环
@@ -407,174 +440,42 @@ function SearchPageClient() {
 
     if (query) {
       setSearchQuery(query);
-      // 新搜索：关闭旧连接并清空结果
-      if (eventSourceRef.current) {
-        try { eventSourceRef.current.close(); } catch { }
-        eventSourceRef.current = null;
-      }
       setSearchResults([]);
-      setTotalSources(0);
-      setCompletedSources(0);
-      // 清理缓冲
-      pendingResultsRef.current = [];
-      if (flushTimerRef.current) {
-        clearTimeout(flushTimerRef.current);
-        flushTimerRef.current = null;
-      }
       setIsLoading(true);
       setShowResults(true);
 
-      const trimmed = query.trim();
+      const trimmedQuery = query.trim();
 
-      // 每次搜索时重新读取设置，确保使用最新的配置
-      let currentFluidSearch = useFluidSearch;
-      if (typeof window !== 'undefined') {
-        const savedFluidSearch = localStorage.getItem('fluidSearch');
-        if (savedFluidSearch !== null) {
-          currentFluidSearch = JSON.parse(savedFluidSearch);
+      fetch('/api/ai/assistant', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: trimmedQuery }),
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (currentQueryRef.current !== trimmedQuery) return;
+
+        if (data.error) {
+          console.error('Search API error:', data.error);
+          setSearchResults([]);
         } else {
-          const defaultFluidSearch = (window as any).RUNTIME_CONFIG?.FLUID_SEARCH !== false;
-          currentFluidSearch = defaultFluidSearch;
+          setSearchResults(data.results || []);
         }
-      }
+        setIsLoading(false);
+      })
+      .catch(error => {
+        console.error('Search API call failed:', error);
+        setIsLoading(false);
+      });
 
-      // 如果读取的配置与当前状态不同，更新状态
-      if (currentFluidSearch !== useFluidSearch) {
-        setUseFluidSearch(currentFluidSearch);
-      }
-
-      if (currentFluidSearch) {
-        // 流式搜索：打开新的流式连接
-        const es = new EventSource(`/api/search/ws?q=${encodeURIComponent(trimmed)}`);
-        eventSourceRef.current = es;
-
-        es.onmessage = (event) => {
-          if (!event.data) return;
-          try {
-            const payload = JSON.parse(event.data);
-            if (currentQueryRef.current !== trimmed) return;
-            switch (payload.type) {
-              case 'start':
-                setTotalSources(payload.totalSources || 0);
-                setCompletedSources(0);
-                break;
-              case 'source_result': {
-                setCompletedSources((prev) => prev + 1);
-                if (Array.isArray(payload.results) && payload.results.length > 0) {
-                  // 缓冲新增结果，节流刷入，避免频繁重渲染导致闪烁
-                  const activeYearOrder = (viewMode === 'agg' ? (filterAgg.yearOrder) : (filterAll.yearOrder));
-                  const incoming: SearchResult[] =
-                    activeYearOrder === 'none'
-                      ? sortBatchForNoOrder(payload.results as SearchResult[])
-                      : (payload.results as SearchResult[]);
-                  pendingResultsRef.current.push(...incoming);
-                  if (!flushTimerRef.current) {
-                    flushTimerRef.current = window.setTimeout(() => {
-                      const toAppend = pendingResultsRef.current;
-                      pendingResultsRef.current = [];
-                      startTransition(() => {
-                        setSearchResults((prev) => prev.concat(toAppend));
-                      });
-                      flushTimerRef.current = null;
-                    }, 80);
-                  }
-                }
-                break;
-              }
-              case 'source_error':
-                setCompletedSources((prev) => prev + 1);
-                break;
-              case 'complete':
-                setCompletedSources(payload.completedSources || totalSources);
-                // 完成前确保将缓冲写入
-                if (pendingResultsRef.current.length > 0) {
-                  const toAppend = pendingResultsRef.current;
-                  pendingResultsRef.current = [];
-                  if (flushTimerRef.current) {
-                    clearTimeout(flushTimerRef.current);
-                    flushTimerRef.current = null;
-                  }
-                  startTransition(() => {
-                    setSearchResults((prev) => prev.concat(toAppend));
-                  });
-                }
-                setIsLoading(false);
-                try { es.close(); } catch { }
-                if (eventSourceRef.current === es) {
-                  eventSourceRef.current = null;
-                }
-                break;
-            }
-          } catch { }
-        };
-
-        es.onerror = () => {
-          setIsLoading(false);
-          // 错误时也清空缓冲
-          if (pendingResultsRef.current.length > 0) {
-            const toAppend = pendingResultsRef.current;
-            pendingResultsRef.current = [];
-            if (flushTimerRef.current) {
-              clearTimeout(flushTimerRef.current);
-              flushTimerRef.current = null;
-            }
-            startTransition(() => {
-              setSearchResults((prev) => prev.concat(toAppend));
-            });
-          }
-          try { es.close(); } catch { }
-          if (eventSourceRef.current === es) {
-            eventSourceRef.current = null;
-          }
-        };
-      } else {
-        // 传统搜索：使用普通接口
-        fetch(`/api/search?q=${encodeURIComponent(trimmed)}`)
-          .then(response => response.json())
-          .then(data => {
-            if (currentQueryRef.current !== trimmed) return;
-
-            if (data.results && Array.isArray(data.results)) {
-              const activeYearOrder = (viewMode === 'agg' ? (filterAgg.yearOrder) : (filterAll.yearOrder));
-              const results: SearchResult[] =
-                activeYearOrder === 'none'
-                  ? sortBatchForNoOrder(data.results as SearchResult[])
-                  : (data.results as SearchResult[]);
-
-              setSearchResults(results);
-              setTotalSources(1);
-              setCompletedSources(1);
-            }
-            setIsLoading(false);
-          })
-          .catch(() => {
-            setIsLoading(false);
-          });
-      }
       setShowSuggestions(false);
-
-      // 保存到搜索历史 (事件监听会自动更新界面)
       addSearchHistory(query);
     } else {
       setShowResults(false);
-      setShowSuggestions(false);
     }
   }, [searchParams]);
-
-  // 组件卸载时，关闭可能存在的连接
-  useEffect(() => {
-    return () => {
-      if (eventSourceRef.current) {
-        try { eventSourceRef.current.close(); } catch { }
-        eventSourceRef.current = null;
-      }
-      if (flushTimerRef.current) {
-        clearTimeout(flushTimerRef.current);
-        flushTimerRef.current = null;
-      }
-      pendingResultsRef.current = [];
-    };
-  }, []);
 
   // 输入框内容变化时触发，显示搜索建议
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -598,17 +499,15 @@ function SearchPageClient() {
   // 搜索表单提交时触发，处理搜索逻辑
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmed = searchQuery.trim().replace(/\s+/g, ' ');
-    if (!trimmed) return;
+    const trimmedQuery = searchQuery.trim();
+    if (!trimmedQuery) return;
 
-    // 回显搜索框
-    setSearchQuery(trimmed);
-    setIsLoading(true);
-    setShowResults(true);
+    setSearchQuery(trimmedQuery);
     setShowSuggestions(false);
 
-    router.push(`/search?q=${encodeURIComponent(trimmed)}`);
-    // 其余由 searchParams 变化的 effect 处理
+    // The actual search logic is triggered by the useEffect hook watching searchParams.
+    // We just need to update the URL.
+    router.push(`/search?q=${encodeURIComponent(trimmedQuery)}`);
   };
 
   const handleSuggestionSelect = (suggestion: string) => {
@@ -700,23 +599,18 @@ function SearchPageClient() {
         <div className='max-w-[95%] mx-auto mt-12 overflow-visible'>
           {showResults ? (
             <section className='mb-12'>
-              {/* 标题 */}
+              {/* Title */}
               <div className='mb-4'>
                 <h2 className='text-xl font-bold text-gray-800 dark:text-gray-200'>
-                  搜索结果
-                  {totalSources > 0 && useFluidSearch && (
-                    <span className='ml-2 text-sm font-normal text-gray-500 dark:text-gray-400'>
-                      {completedSources}/{totalSources}
-                    </span>
-                  )}
-                  {isLoading && useFluidSearch && (
+                  {searchQuery.trim() && (searchResults.length > 0 || isLoading) ? '推荐结果' : (!searchQuery.trim() && recommendations.length > 0 ? '为你推荐' : '')}
+                  {isLoading && (
                     <span className='ml-2 inline-block align-middle'>
                       <span className='inline-block h-3 w-3 border-2 border-gray-300 border-t-green-500 rounded-full animate-spin'></span>
                     </span>
                   )}
                 </h2>
               </div>
-              {/* 筛选器 + 聚合开关 同行 */}
+              {/* Filter + Aggregation Switch */}
               <div className='mb-8 flex items-center justify-between gap-3'>
                 <div className='flex-1 min-w-0'>
                   {viewMode === 'agg' ? (
@@ -748,10 +642,35 @@ function SearchPageClient() {
                   </div>
                 </label>
               </div>
-              {searchResults.length === 0 ? (
-                isLoading ? (
-                  <div className='flex justify-center items-center h-40'>
-                    <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-green-500'></div>
+              {isLoading && searchResults.length === 0 ? (
+                <div className='flex justify-center items-center h-40'>
+                  <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-green-500'></div>
+                </div>
+              ) : searchResults.length === 0 ? (
+                recommendations.length > 0 ? (
+                  <div
+                    key='recommendations'
+                    className='justify-start grid grid-cols-3 gap-x-2 gap-y-14 sm:gap-y-20 px-0 sm:px-2 sm:grid-cols-[repeat(auto-fill,_minmax(11rem,_1fr))] sm:gap-x-8'
+                  >
+                    {recommendations.map((item) => (
+                      <div
+                        key={`rec-${item.source}-${item.id}`}
+                        className='w-full'
+                      >
+                        <VideoCard
+                          id={item.id}
+                          title={item.title}
+                          poster={item.poster}
+                          episodes={item.episodes.length}
+                          source={item.source}
+                          source_name={item.source_name}
+                          douban_id={item.douban_id}
+                          year={item.year}
+                          from='search'
+                          type={item.episodes.length > 1 ? 'tv' : 'movie'}
+                        />
+                      </div>
+                    ))}
                   </div>
                 ) : (
                   <div className='text-center text-gray-500 py-8 dark:text-gray-400'>
@@ -825,53 +744,90 @@ function SearchPageClient() {
                 </div>
               )}
             </section>
-          ) : searchHistory.length > 0 ? (
-            // 搜索历史
-            <section className='mb-12'>
-              <h2 className='mb-4 text-xl font-bold text-gray-800 text-left dark:text-gray-200'>
-                搜索历史
-                {searchHistory.length > 0 && (
-                  <button
-                    onClick={() => {
-                      clearSearchHistory(); // 事件监听会自动更新界面
-                    }}
-                    className='ml-3 text-sm text-gray-500 hover:text-red-500 transition-colors dark:text-gray-400 dark:hover:text-red-500'
-                  >
-                    清空
-                  </button>
-                )}
-              </h2>
-              <div className='flex flex-wrap gap-2'>
-                {searchHistory.map((item) => (
-                  <div key={item} className='relative group'>
-                    <button
-                      onClick={() => {
-                        setSearchQuery(item);
-                        router.push(
-                          `/search?q=${encodeURIComponent(item.trim())}`
-                        );
-                      }}
-                      className='px-4 py-2 bg-gray-500/10 hover:bg-gray-300 rounded-full text-sm text-gray-700 transition-colors duration-200 dark:bg-gray-700/50 dark:hover:bg-gray-600 dark:text-gray-300'
-                    >
-                      {item}
-                    </button>
-                    {/* 删除按钮 */}
-                    <button
-                      aria-label='删除搜索历史'
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        deleteSearchHistory(item); // 事件监听会自动更新界面
-                      }}
-                      className='absolute -top-1 -right-1 w-4 h-4 opacity-0 group-hover:opacity-100 bg-gray-400 hover:bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] transition-colors'
-                    >
-                      <X className='w-3 h-3' />
-                    </button>
+          ) : (
+            <>
+              {searchHistory.length > 0 && (
+                <section className='mb-12'>
+                  <h2 className='mb-4 text-xl font-bold text-gray-800 text-left dark:text-gray-200'>
+                    搜索历史
+                    {searchHistory.length > 0 && (
+                      <button
+                        onClick={() => {
+                          clearSearchHistory(); // 事件监听会自动更新界面
+                        }}
+                        className='ml-3 text-sm text-gray-500 hover:text-red-500 transition-colors dark:text-gray-400 dark:hover:text-red-500'
+                      >
+                        清空
+                      </button>
+                    )}
+                  </h2>
+                  <div className='flex flex-wrap gap-2'>
+                    {searchHistory.map((item) => (
+                      <div key={item} className='relative group'>
+                        <button
+                          onClick={() => {
+                            setSearchQuery(item);
+                            router.push(
+                              `/search?q=${encodeURIComponent(item.trim())}`
+                            );
+                          }}
+                          className='px-4 py-2 bg-gray-500/10 hover:bg-gray-300 rounded-full text-sm text-gray-700 transition-colors duration-200 dark:bg-gray-700/50 dark:hover:bg-gray-600 dark:text-gray-300'
+                        >
+                          {item}
+                        </button>
+                        {/* 删除按钮 */}
+                        <button
+                          aria-label='删除搜索历史'
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            deleteSearchHistory(item); // 事件监听会自动更新界面
+                          }}
+                          className='absolute -top-1 -right-1 w-4 h-4 opacity-0 group-hover:opacity-100 bg-gray-400 hover:bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] transition-colors'
+                        >
+                          <X className='w-3 h-3' />
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </section>
-          ) : null}
+                </section>
+              )}
+              {recommendations.length > 0 && (
+                <section className='mb-12'>
+                  <h2 className='mb-4 text-xl font-bold text-gray-800 text-left dark:text-gray-200'>为你推荐</h2>
+                  <div
+                    key='recommendations'
+                    className='justify-start grid grid-cols-3 gap-x-2 gap-y-14 sm:gap-y-20 px-0 sm:px-2 sm:grid-cols-[repeat(auto-fill,_minmax(11rem,_1fr))] sm:gap-x-8'
+                  >
+                    {recommendations.map((item) => (
+                      <div
+                        key={`rec-${item.source}-${item.id}`}
+                        className='w-full'
+                      >
+                        <VideoCard
+                          id={item.id}
+                          title={item.title}
+                          poster={item.poster}
+                          episodes={item.episodes.length}
+                          source={item.source}
+                          source_name={item.source_name}
+                          douban_id={item.douban_id}
+                          year={item.year}
+                          from='search'
+                          type={item.episodes.length > 1 ? 'tv' : 'movie'}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div ref={loadMoreRef} className='h-10 flex justify-center items-center'>
+                    {isRecommendationsLoading && (
+                      <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-green-500'></div>
+                    )}
+                  </div>
+                </section>
+              )}
+            </>
+          )}
         </div>
       </div>
 

@@ -108,8 +108,18 @@ export function createRedisClient(config: RedisConnectionConfig, globalSymbol: s
       console.error(`${config.clientName} client error:`, err);
     });
 
-    client.on('connect', () => {
+    client.on('connect', async () => {
       console.log(`${config.clientName} connected`);
+      // Clear AI recommendation cache on startup
+      try {
+        const keys = await client!.keys('discover_sort_user_*');
+        if (keys.length > 0) {
+          await client!.del(keys);
+          console.log(`Cleared ${keys.length} AI recommendation caches.`);
+        }
+      } catch (err) {
+        console.error('Failed to clear AI recommendation cache:', err);
+      }
     });
 
     client.on('reconnecting', () => {
@@ -461,6 +471,19 @@ export abstract class BaseRedisStorage implements IStorage {
     } catch (error) {
       console.error('清空数据失败:', error);
       throw new Error('清空数据失败');
+    }
+  }
+
+  // ---------- Generic key-value store ----------
+  async get(key: string): Promise<string | null> {
+    return this.withRetry(() => this.client.get(key));
+  }
+
+  async set(key: string, value: string, ttl?: number): Promise<void> {
+    if (ttl) {
+      await this.withRetry(() => this.client.set(key, value, { EX: ttl }));
+    } else {
+      await this.withRetry(() => this.client.set(key, value));
     }
   }
 }

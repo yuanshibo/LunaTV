@@ -239,6 +239,20 @@ export class DbManager {
       throw new Error('存储类型不支持清空数据操作');
     }
   }
+
+  // ---------- Generic key-value store ----------
+  async get(key: string): Promise<string | null> {
+    if (typeof (this.storage as any).get === 'function') {
+      return (this.storage as any).get(key);
+    }
+    return null;
+  }
+
+  async set(key: string, value: string, ttl?: number): Promise<void> {
+    if (typeof (this.storage as any).set === 'function') {
+      await (this.storage as any).set(key, value, ttl);
+    }
+  }
 }
 
 // 导出默认实例

@@ -182,7 +182,7 @@ export function refineConfig(adminConfig: AdminConfig): AdminConfig {
   return adminConfig;
 }
 
-async function getInitConfig(configFile: string, subConfig: {
+export async function getInitConfig(configFile: string, subConfig: {
   URL: string;
   AutoUpdate: boolean;
   LastCheck: string;
