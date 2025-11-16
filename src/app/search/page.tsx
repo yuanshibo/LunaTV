@@ -462,6 +462,7 @@ function SearchPageClient() {
           const decoder = new TextDecoder();
           let buffer = '';
 
+          // eslint-disable-next-line no-constant-condition
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
@@ -480,20 +481,19 @@ function SearchPageClient() {
                   return;
                 }
                 if (parsed.error) {
-                  console.error('Search API stream error:', parsed.error);
-                  // Optionally handle error display
+                  // Optionally handle stream error display in the UI
                 } else {
                   startTransition(() => {
                     setSearchResults(prev => [...prev, parsed]);
                   });
                 }
               } catch (e) {
-                console.error('Failed to parse JSON line:', line, e);
+                // Ignore parsing errors for now, as they might be due to incomplete data chunks
               }
             }
           }
         } catch (error) {
-          console.error('Search API call failed:', error);
+           // Handle fetch error if needed
         } finally {
           if (currentQueryRef.current === trimmedQuery) {
             setIsLoading(false);

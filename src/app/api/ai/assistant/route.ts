@@ -44,32 +44,25 @@ export async function POST(request: NextRequest) {
         };
 
         // --- Step 1: Direct Search ---
-        console.log(`Unified search for "${query}" from ${user.username}. Starting with direct search.`);
         const directSearchResults = await directSearch(query, user.username);
 
         if (directSearchResults.length > 0) {
-          console.log(`Direct search found ${directSearchResults.length} results for "${query}". Streaming now.`);
           streamResults(directSearchResults);
           controller.close();
           return;
         }
 
         // --- Step 2: AI Fallback ---
-        console.log(`Direct search found no results for "${query}". Falling back to AI assistant.`);
         const config = await getConfig();
         const provider = config.SiteConfig.aiProvider;
 
         if (!provider || (provider === 'ollama' && !config.SiteConfig.ollama_host) || (provider === 'gemini' && !config.SiteConfig.geminiApiKey)) {
-          console.log('AI provider not configured, skipping AI assistant.');
           controller.close(); // No results, just close the stream
           return;
         }
 
         // The rest of the AI logic remains the same, but instead of returning a JSON response, we stream the results.
         const tasteProfile = await getTasteProfile(user.username);
-        if (!tasteProfile) {
-            console.log(`No taste profile for ${user.username}. AI assistant might have limited context.`);
-        }
 
         const allPlayRecords = await db.getAllPlayRecords(user.username);
         const recentHistory = Object.values(allPlayRecords)
@@ -135,12 +128,14 @@ export async function POST(request: NextRequest) {
 
         const finalResult = await fetchAndProcessCandidates(searchCriteria, watchedTitlesAndYears);
 
-        console.log(`AI search fallback for "${query}" found ${finalResult.length} results. Streaming now.`);
         streamResults(finalResult);
         controller.close();
 
       } catch (error) {
-        console.error(`Error in /api/ai/assistant stream:`, error);
+        // It's better to log the error on the server for debugging purposes.
+        // ESLint might flag this, but for production, server-side logging is crucial.
+        // Consider using a proper logger in a real application.
+        console.error(`Critical error in /api/ai/assistant stream for query "${query}":`, error);
         controller.enqueue(encoder.encode(JSON.stringify({ error: 'Internal Server Error' }) + '\n'));
         controller.close();
       }
