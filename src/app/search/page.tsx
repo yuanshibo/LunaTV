@@ -446,29 +446,62 @@ function SearchPageClient() {
 
       const trimmedQuery = query.trim();
 
-      fetch('/api/ai/assistant', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ query: trimmedQuery }),
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (currentQueryRef.current !== trimmedQuery) return;
+      const processStream = async () => {
+        try {
+          const response = await fetch('/api/ai/assistant', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: trimmedQuery }),
+          });
 
-        if (data.error) {
-          console.error('Search API error:', data.error);
-          setSearchResults([]);
-        } else {
-          setSearchResults(data.results || []);
+          if (!response.body) {
+            throw new Error('Response body is null');
+          }
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || ''; // Keep the last partial line in buffer
+
+            for (const line of lines) {
+              if (line.trim() === '') continue;
+              try {
+                const parsed = JSON.parse(line);
+                if (currentQueryRef.current !== trimmedQuery) {
+                  // If query changed during streaming, stop processing
+                  reader.cancel();
+                  return;
+                }
+                if (parsed.error) {
+                  console.error('Search API stream error:', parsed.error);
+                  // Optionally handle error display
+                } else {
+                  startTransition(() => {
+                    setSearchResults(prev => [...prev, parsed]);
+                  });
+                }
+              } catch (e) {
+                console.error('Failed to parse JSON line:', line, e);
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Search API call failed:', error);
+        } finally {
+          if (currentQueryRef.current === trimmedQuery) {
+            setIsLoading(false);
+          }
         }
-        setIsLoading(false);
-      })
-      .catch(error => {
-        console.error('Search API call failed:', error);
-        setIsLoading(false);
-      });
+      };
+
+      processStream();
 
       setShowSuggestions(false);
       addSearchHistory(query);
