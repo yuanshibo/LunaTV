@@ -14,12 +14,14 @@ export const AVAILABLE_SEARCH_FILTERS = {
     category: ["喜剧", "爱情", "动作", "科幻", "悬疑", "犯罪", "惊悚", "冒险", "音乐", "历史", "奇幻", "恐怖", "战争", "传记", "歌舞", "武侠", "情色", "灾难", "西部", "纪录片", "短片"],
     region: ["华语", "欧美", "韩国", "日本", "中国大陆", "美国", "中国香港", "中国台湾", "英国", "法国", "德国", "意大利", "西班牙", "印度", "泰国", "俄罗斯", "加拿大", "澳大利亚", "爱尔兰", "瑞典", "巴西", "丹麦"],
     year: ["2020年代", "2025", "2024", "2023", "2022", "2021", "2020", "2019", "2010年代", "2000年代", "90年代", "80年代", "70年代", "60年代", "更早"],
+    label: ["豆瓣高分", "冷门佳片", "获奖", "治愈", "致郁", "励志", "搞笑", "黑色幽默", "人性", "青春", "感人", "经典", "悬疑", "犯罪", "科幻", "魔幻", "动作", "恐怖", "爱情", "古装", "历史", "战争", "传记", "纪录片", "动画", "二次元", "儿童", "家庭", "女性", "职场", "校园", "超级英雄", "怪兽", "赛博朋克", "末日", "时间旅行", "反乌托邦", "烧脑", "定格动画", "美国动画", "动物", "恶搞", "运动", "后宫", "恋爱"]
   },
   tv: {
-    category: ["喜剧", "爱情", "悬疑", "武侠", "古装", "家庭", "犯罪", "科幻", "恐怖", "历史", "战争", "动作", "冒险", "传记", "剧情", "奇幻", "惊悚", "灾难", "歌舞", "音乐"],
+    category: ["喜剧", "爱情", "悬疑", "武侠", "古装", "家庭", "犯罪", "科幻", "恐怖", "历史", "战争", "动作", "冒险", "传记", "剧情", "奇幻", "惊悚", "灾难", "歌舞", "音乐", "真人秀", "脱口秀"],
     region: ["华语", "欧美", "国外", "韩国", "日本", "中国大陆", "中国香港", "美国", "英国", "泰国", "中国台湾", "意大利", "法国", "德国", "西班牙", "俄罗斯", "瑞典", "巴西", "丹麦", "印度", "加拿大", "爱尔兰", "澳大利亚"],
     year: ["2020年代", "2025", "2024", "2023", "2022", "2021", "2020", "2019", "2010年代", "2000年代", "90年代", "80年代", "70年代", "60年代", "更早"],
     platform: ["腾讯视频", "爱奇艺", "优酷", "湖南卫视", "Netflix", "HBO", "BBC", "NHK", "CBS", "NBC", "tvN"],
+    label: ["豆瓣高分", "冷门佳片", "获奖", "治愈", "致郁", "励志", "搞笑", "黑色幽默", "人性", "青春", "感人", "经典", "悬疑", "犯罪", "科幻", "魔幻", "动作", "恐怖", "爱情", "古装", "历史", "战争", "传记", "纪录片", "动画", "二次元", "儿童", "家庭", "女性", "职场", "校园", "美剧", "英剧", "韩剧", "日剧", "国产剧", "港剧", "台剧", "泰剧", "网剧", "烧脑", "下饭", "定格动画", "美国动画", "动物", "恶搞", "运动", "后宫", "恋爱", "国漫"]
   }
 };
 
@@ -289,9 +291,12 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
   }
 
   const tasteProfile = await getTasteProfile(user.username);
-  const { validRecords: allValidHistory } = await getAndFilterPlayRecords(user.username);
+  const { validRecords: allValidHistory, abandonedRecords = [] } = await getAndFilterPlayRecords(user.username);
   const recentHistory = allValidHistory.slice(0, 10);
   const watchedTitlesAndYears = new Set(allValidHistory.map(record => `${record.title}-${record.year}`));
+
+  // Gather abandoned titles for negative filtering
+  const abandonedTitles = abandonedRecords.map(r => r.title).join(', ');
 
 
   if (recentHistory.length === 0) {
@@ -319,32 +324,35 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
 
     ${tasteProfilePrompt}
 
-    **User's Recent Watched Titles:**
+    **User's Recent Watched Titles (Last 10):**
     ${recentTitles}
 
+    **User's Abandoned/Disliked Titles (AVOID SIMILAR CONTENT):**
+    ${abandonedTitles}
+
     **Your Task:**
-    Synthesize the user's long-term profile with their recent activity to generate exactly THREE search criteria combinations, each with a distinct purpose, to provide a well-rounded recommendation experience.
+    Synthesize the user's long-term profile with their recent activity to generate exactly THREE search criteria combinations. You MUST adhere to the "disliked_elements" in the taste profile and the "Abandoned Titles" list to avoid bad recommendations.
 
     **Instructions for Each Combination:**
 
     1.  **Combination 1: Core Interest Match**
         - Analyze the user's strongest and most consistent preferences from their taste profile.
         - Generate a specific and precise search criterion that directly caters to this core interest.
-        - **Example:** If the user loves "悬疑" and "科幻", don't just search for "科幻". Instead, create a more targeted criterion like \`{ "kind": "movie", "category": "悬疑", "label": "高分" }\` that also aligns with their preference for highly-rated content.
+        - **Optimization:** Use the new "label" field to map nuanced tastes (e.g., use "治愈" if they like heartwarming stories, "烧脑" if they like complex plots).
 
     2.  **Combination 2: Adjacent Exploration**
         - Identify a genre or theme that is related to the user's core interest but they haven't explored much.
         - Generate a criterion that gently pushes their boundaries.
-        - **Example:** If the user loves modern "美国" "科幻" films, suggest a classic \`{ "kind": "movie", "category": "科幻", "region": "日本", "year": "90年代" }\` to introduce them to a different style of the same genre.
+        - **Example:** If the user loves modern "美国" "科幻" films, suggest a classic \`{ "kind": "movie", "category": "科幻", "region": "日本", "year": "90年代" }\`.
 
-    3.  **Combination 3: Surprise Niche (Wildcard)**
-        - Look for an interesting, less obvious connection in their profile or history.
-        - Generate a creative, "cold start" criterion for a niche genre or theme they might unexpectedly enjoy.
-        - **Example:** If a user watches many "犯罪" dramas that often feature complex legal battles, you might infer an interest in courtroom dramas and suggest a \`{ "kind": "movie", "category": "剧情", "label": "经典" }\` and hint that it's a courtroom-focused film.
+    3.  **Combination 3: True Surprise (Wildcard)**
+        - **CRITICAL:** This combination MUST be significantly different from the user's "Recent Watched Titles" and "Core Interest".
+        - Look for high-quality content ("豆瓣高分", "冷门佳片", "获奖") in a genre or region they rarely visit.
+        - **Example:** If they only watch "欧美" "科幻", suggest a "高分" "华语" "剧情" movie.
 
     **Output Format:**
     - You MUST use the available search parameters and their exact values listed below.
-    - Return a single JSON object with a key "combinations", which is an array containing exactly THREE criteria objects, following the logic above.
+    - Return a single JSON object with a key "combinations", which is an array containing exactly THREE criteria objects.
 
     **Available Search Parameters:**
     - "kind": "movie" or "tv".
@@ -355,7 +363,7 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
     - "year" for "movie": [${AVAILABLE_SEARCH_FILTERS.movie.year.join(', ')}]
     - "year" for "tv": [${AVAILABLE_SEARCH_FILTERS.tv.year.join(', ')}]
     - "platform" for "tv": [${AVAILABLE_SEARCH_FILTERS.tv.platform.join(', ')}]
-    - "label": You can optionally use "高分", "经典", "冷门".
+    - "label": [${[...new Set([...AVAILABLE_SEARCH_FILTERS.movie.label, ...AVAILABLE_SEARCH_FILTERS.tv.label])].join(', ')}]
 
     Example format: {"combinations": [{...}, {...}, {...}]}
   `;
