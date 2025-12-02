@@ -363,7 +363,7 @@ export async function discoverSort(user: User): Promise<SearchResult[]> {
     - "year" for "movie": [${AVAILABLE_SEARCH_FILTERS.movie.year.join(', ')}]
     - "year" for "tv": [${AVAILABLE_SEARCH_FILTERS.tv.year.join(', ')}]
     - "platform" for "tv": [${AVAILABLE_SEARCH_FILTERS.tv.platform.join(', ')}]
-    - "label": [${[...new Set([...AVAILABLE_SEARCH_FILTERS.movie.label, ...AVAILABLE_SEARCH_FILTERS.tv.label])].join(', ')}]
+    - "label": [${Array.from(new Set([...AVAILABLE_SEARCH_FILTERS.movie.label, ...AVAILABLE_SEARCH_FILTERS.tv.label])).join(', ')}]
 
     Example format: {"combinations": [{...}, {...}, {...}]}
   `;
