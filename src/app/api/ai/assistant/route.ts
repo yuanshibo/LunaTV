@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
       - "kind": "movie" or "tv".
       - "category" (for movie): [${AVAILABLE_SEARCH_FILTERS.movie.category.join(', ')}]
       - "category" (for tv): [${AVAILABLE_SEARCH_FILTERS.tv.category.join(', ')}]
-      - "label": [${[...new Set([...AVAILABLE_SEARCH_FILTERS.movie.label, ...AVAILABLE_SEARCH_FILTERS.tv.label])].join(', ')}]
+      - "label": [${Array.from(new Set([...AVAILABLE_SEARCH_FILTERS.movie.label, ...AVAILABLE_SEARCH_FILTERS.tv.label])).join(', ')}]
 
       **Example Output:**
       {
