@@ -87,23 +87,29 @@ export async function POST(request: NextRequest) {
 
       **Step 2: Synthesize and Generate Criteria**
       Based on your intent classification from Step 1, synthesize all the available information (taste profile, recent history, and the query itself) to create a list of 1-2 highly relevant Douban search criteria combinations.
-      - For "Specific Search", focus on the entity mentioned.
-      - For other searches, use the taste profile and recent history to refine the criteria to the user's specific tastes. For example, if they ask for a "suspense film" and their profile shows a love for "dystopian" themes, combine these concepts.
+
+      - **For "Similarity Search":** Deconstruct the *target title* into its core components (e.g., Genre + Mood + Region). Then generate a criterion that matches these components.
+        - *Example:* If user asks for "like Interstellar", decompose it to "Science Fiction" + "Hardcore/Burn Brain". Generate: \`{ "kind": "movie", "category": "科幻", "label": "烧脑" }\`.
+      - **For "Mood Search":** Map the user's emotional words to the available "label" list.
+        - *Example:* "sad movie" -> "致郁"; "funny show" -> "搞笑"; "healing anime" -> "治愈".
+      - **For "Specific Search":** Focus on the entity mentioned.
+      - **For "Thematic Search":** Combine the theme with the user's taste profile.
 
       **Step 3: Format Output**
       Return a single JSON object with a single key: "searchCriteria". This key must contain an array of the criteria objects you generated. Do not include any other keys, explanations, or conversational text.
+      **Optimization:** You are encouraged to generate 2 different criteria combinations to maximize the chance of finding good results (e.g., one strict match, one slightly broader).
 
       **Available Search Parameters:**
       - "kind": "movie" or "tv".
       - "category" (for movie): [${AVAILABLE_SEARCH_FILTERS.movie.category.join(', ')}]
       - "category" (for tv): [${AVAILABLE_SEARCH_FILTERS.tv.category.join(', ')}]
-      - "label": (optional) "高分", "经典", "冷门".
+      - "label": [${[...new Set([...AVAILABLE_SEARCH_FILTERS.movie.label, ...AVAILABLE_SEARCH_FILTERS.tv.label])].join(', ')}]
 
       **Example Output:**
       {
         "searchCriteria": [
           { "kind": "movie", "category": "科幻", "label": "经典" },
-          { "kind": "movie", "category": "悬疑" }
+          { "kind": "movie", "category": "悬疑", "label": "烧脑" }
         ]
       }
     `;
