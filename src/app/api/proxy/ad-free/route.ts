@@ -8,12 +8,18 @@ import { getBaseUrl, resolveUrl } from "@/lib/live";
 export const runtime = 'nodejs';
 
 // 核心去广告算法：过滤掉 #EXT-X-DISCONTINUITY 相关的广告片段，并重写切片代理
-function filterAdsFromM3U8(m3u8Content: string, baseUrl: string, req: Request, allowCORS: boolean): string {
+function filterAdsFromM3U8(m3u8Content: string, baseUrl: string, req: Request, allowCORS: boolean, source?: string | null): string {
   if (!m3u8Content) return '';
 
   const referer = req.headers.get('referer');
   let protocol = 'http';
-  if (referer) {
+
+  // 1. Try x-forwarded-proto
+  const forwardedProto = req.headers.get('x-forwarded-proto');
+  if (forwardedProto) {
+    protocol = forwardedProto.split(',')[0].trim();
+  } else if (referer) {
+    // 2. Fallback to referer
     try {
       const refererUrl = new URL(referer);
       protocol = refererUrl.protocol.replace(':', '');
@@ -22,8 +28,16 @@ function filterAdsFromM3U8(m3u8Content: string, baseUrl: string, req: Request, a
     }
   }
 
-  const host = req.headers.get('host');
-  const proxyBase = `${protocol}://${host}/api/proxy`;
+  // Fallback host if missing (though Next.js usually guarantees it)
+  const host = req.headers.get('host') || 'localhost:3000';
+
+  // 使用环境变量中配置的 SITE_BASE，如果没有则自动推断
+  let proxyBase = `${protocol}://${host}/api/proxy`;
+  if (process.env.SITE_BASE) {
+    proxyBase = `${process.env.SITE_BASE}/api/proxy`;
+  }
+
+  const sourceParam = source ? `&moontv-source=${encodeURIComponent(source)}` : '';
 
   // 按行分割M3U8内容
   const lines = m3u8Content.split('\n');
@@ -41,19 +55,19 @@ function filterAdsFromM3U8(m3u8Content: string, baseUrl: string, req: Request, a
     if (line && !line.startsWith('#')) {
       const resolvedUrl = resolveUrl(baseUrl, line);
       // 根据 allowCORS 决定直接使用源地址或使用代理
-      const proxyUrl = allowCORS ? resolvedUrl : `${proxyBase}/segment?url=${encodeURIComponent(resolvedUrl)}`;
+      const proxyUrl = allowCORS ? resolvedUrl : `${proxyBase}/segment?url=${encodeURIComponent(resolvedUrl)}${sourceParam}`; main
       filteredLines.push(proxyUrl);
       continue;
     }
 
     // 处理 EXT-X-MAP 标签中的 URI
     if (line.startsWith('#EXT-X-MAP:')) {
-      line = rewriteMapUri(line, baseUrl, proxyBase);
+      line = rewriteMapUri(line, baseUrl, proxyBase, sourceParam);
     }
 
     // 处理 EXT-X-KEY 标签中的 URI
     if (line.startsWith('#EXT-X-KEY:')) {
-      line = rewriteKeyUri(line, baseUrl, proxyBase);
+      line = rewriteKeyUri(line, baseUrl, proxyBase, sourceParam);
     }
 
     // 处理嵌套的 M3U8 文件 (EXT-X-STREAM-INF)
@@ -65,7 +79,7 @@ function filterAdsFromM3U8(m3u8Content: string, baseUrl: string, req: Request, a
         if (nextLine && !nextLine.startsWith('#')) {
           const resolvedUrl = resolveUrl(baseUrl, nextLine);
           // 嵌套 M3U8 同样走到去广告代理接口
-          const proxyUrl = `${proxyBase}/ad-free?url=${encodeURIComponent(resolvedUrl)}`;
+          const proxyUrl = `${proxyBase}/ad-free?url=${encodeURIComponent(resolvedUrl)}${sourceParam}`;
           filteredLines.push(proxyUrl);
         } else {
           filteredLines.push(nextLine);
@@ -80,23 +94,23 @@ function filterAdsFromM3U8(m3u8Content: string, baseUrl: string, req: Request, a
   return filteredLines.join('\n');
 }
 
-function rewriteMapUri(line: string, baseUrl: string, proxyBase: string) {
+function rewriteMapUri(line: string, baseUrl: string, proxyBase: string, sourceParam: string) {
   const uriMatch = line.match(/URI="([^"]+)"/);
   if (uriMatch) {
     const originalUri = uriMatch[1];
     const resolvedUrl = resolveUrl(baseUrl, originalUri);
-    const proxyUrl = `${proxyBase}/segment?url=${encodeURIComponent(resolvedUrl)}`;
+    const proxyUrl = `${proxyBase}/segment?url=${encodeURIComponent(resolvedUrl)}${sourceParam}`;
     return line.replace(uriMatch[0], `URI="${proxyUrl}"`);
   }
   return line;
 }
 
-function rewriteKeyUri(line: string, baseUrl: string, proxyBase: string) {
+function rewriteKeyUri(line: string, baseUrl: string, proxyBase: string, sourceParam: string) {
   const uriMatch = line.match(/URI="([^"]+)"/);
   if (uriMatch) {
     const originalUri = uriMatch[1];
     const resolvedUrl = resolveUrl(baseUrl, originalUri);
-    const proxyUrl = `${proxyBase}/key?url=${encodeURIComponent(resolvedUrl)}`;
+    const proxyUrl = `${proxyBase}/key?url=${encodeURIComponent(resolvedUrl)}${sourceParam}`;
     return line.replace(uriMatch[0], `URI="${proxyUrl}"`);
   }
   return line;
@@ -143,10 +157,10 @@ export async function GET(request: Request) {
       responseUsed = true;
       const baseUrl = getBaseUrl(finalUrl);
 
-      const modifiedContent = filterAdsFromM3U8(m3u8Content, baseUrl, request, allowCORS);
+      const modifiedContent = filterAdsFromM3U8(m3u8Content, baseUrl, request, allowCORS, source);
 
       const headers = new Headers();
-      headers.set('Content-Type', contentType);
+      headers.set('Content-Type', 'application/vnd.apple.mpegurl');
       headers.set('Access-Control-Allow-Origin', '*');
       headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
       headers.set('Access-Control-Allow-Headers', 'Content-Type, Range, Origin, Accept');
