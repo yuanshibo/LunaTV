@@ -55,7 +55,7 @@ function filterAdsFromM3U8(m3u8Content: string, baseUrl: string, req: Request, a
     if (line && !line.startsWith('#')) {
       const resolvedUrl = resolveUrl(baseUrl, line);
       // 根据 allowCORS 决定直接使用源地址或使用代理
-      const proxyUrl = allowCORS ? resolvedUrl : `${proxyBase}/segment?url=${encodeURIComponent(resolvedUrl)}${sourceParam}`; main
+      const proxyUrl = allowCORS ? resolvedUrl : `${proxyBase}/segment?url=${encodeURIComponent(resolvedUrl)}${sourceParam}`; 
       filteredLines.push(proxyUrl);
       continue;
     }
