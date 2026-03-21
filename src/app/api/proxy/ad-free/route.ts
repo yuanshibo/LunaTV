@@ -42,12 +42,19 @@ function filterAdsFromM3U8(m3u8Content: string, baseUrl: string, req: Request, a
   // 按行分割M3U8内容
   const lines = m3u8Content.split('\n');
   const filteredLines = [];
+  let inAdBlock = false;
 
   for (let i = 0; i < lines.length; i++) {
     let line = lines[i].trim();
 
     // 过滤广告标识
     if (line.includes('#EXT-X-DISCONTINUITY')) {
+      inAdBlock = !inAdBlock;
+      continue;
+    }
+
+    // 处于广告区块内，直接抛弃所有的TS切片、EXTINF等信息
+    if (inAdBlock) {
       continue;
     }
 
